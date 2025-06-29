@@ -11,4 +11,9 @@ void nvme_shutdown(void);
 bool nvme_flush(u32 nsid);
 bool nvme_read(u32 nsid, u64 lba, void *buffer);
 
+enum nvme_type {
+    NVME_TYPE_T8015,
+    NVME_TYPE_T8103,
+};
+
 #endif
