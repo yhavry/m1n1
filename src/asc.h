@@ -11,6 +11,7 @@ struct asc_message {
 };
 
 enum asc_type {
+    ASC_T8015,
     ASC_T8015_ANS2,
     ASC_ASCWRAP_V4,
 };
