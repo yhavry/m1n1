@@ -140,13 +140,13 @@ static u8 nvme_queue_size;
 
 static struct nvme_queue adminq, ioq;
 
-static bool alloc_queue(struct nvme_queue *q)
+static bool alloc_queue(struct nvme_queue *q, bool adminq)
 {
     size_t cmdq_size;
-    if (nvme_type == NVME_TYPE_T8015)
-        cmdq_size = nvme_queue_size << NVME_IOSQES;
-    else
+    if (adminq || nvme_type == NVME_TYPE_T8103)
         cmdq_size = nvme_queue_size * sizeof(*q->cmds);
+    else
+        cmdq_size = nvme_queue_size << NVME_IOSQES;
 
     memset(q, 0, sizeof(*q));
 
@@ -170,6 +170,7 @@ static bool alloc_queue(struct nvme_queue *q)
     memset(q->cqes, 0, nvme_queue_size * sizeof(*q->cqes));
     q->cq_head = 0;
     q->cq_phase = 1;
+    q->adminq = adminq;
     return true;
 
 free_cqes:
@@ -296,9 +297,7 @@ static bool nvme_exec_command(struct nvme_queue *q, struct nvme_command *cmd, u6
             printf("nvme: invalid tag in CQ: expected %d but got %d\n", cq_tag, cqe.tag);
         }
 
-        if (nvme_type != NVME_TYPE_T8015) {
-            printf("nvme: t8103 (%d)\n", nvme_type);
-
+        if (nvme_type == NVME_TYPE_T8103) {
             write32(nvme_base + NVMMU_TCB_INVAL, cqe.tag);
             if (read32(nvme_base + NVMMU_TCB_STAT))
                 printf("nvme: NVMMU invalidation for tag %d failed\n", cqe.tag);
@@ -374,17 +373,14 @@ bool nvme_init(void)
     }
     printf("nvme: ANS is on die %d\n", nvme_die);
 
-    if (!alloc_queue(&adminq)) {
+    if (!alloc_queue(&adminq, true)) {
         printf("nvme: Error allocating admin queue\n");
         return NULL;
     }
-    if (!alloc_queue(&ioq)) {
+    if (!alloc_queue(&ioq, false)) {
         printf("nvme: Error allocating admin queue\n");
         goto out_adminq;
     }
-
-    ioq.adminq = false;
-    adminq.adminq = true;
 
     nvme_asc = asc_init("/arm-io/ans");
     if (!nvme_asc)
