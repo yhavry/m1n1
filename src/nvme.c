@@ -427,8 +427,6 @@ bool nvme_init(void)
         goto out_disable_ctrl;
     }
 
-    udelay(200000);
-
     /* setup IO queue */
     struct nvme_command cmd;
 
@@ -604,7 +602,10 @@ bool nvme_read(u32 nsid, u64 lba, void *buffer)
     cmd.prp1 = (u64)buffer_addr;
     cmd.cdw10 = lba;
     cmd.cdw11 = lba >> 32;
-    cmd.cdw12 = 1; // 4096 bytes
+    if (nvme_type == NVME_TYPE_T8015)
+        cmd.cdw12 = 0; // 4096 bytes
+    else
+        cmd.cdw12 = 1; // 4096 bytes
     if (nvme_type == NVME_TYPE_T8015)
         cmd.flags = 0x20;
 
