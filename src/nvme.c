@@ -69,7 +69,7 @@
 #define NVME_CMD_WRITE 0x01
 #define NVME_CMD_READ  0x02
 
-#define NVME_IOSQES 7
+#define NVME_IOSQES_128 128
 
 struct nvme_command {
     u8 opcode;
@@ -118,7 +118,7 @@ struct nvme_queue {
 
     u8 cq_head;
     u8 cq_phase;
-    u16 sq_tail;
+    u8 sq_tail;
 
     bool adminq;
 };
@@ -146,7 +146,7 @@ static bool alloc_queue(struct nvme_queue *q, bool adminq)
     if (adminq || nvme_type == NVME_TYPE_T8103)
         cmdq_size = nvme_queue_size * sizeof(*q->cmds);
     else
-        cmdq_size = nvme_queue_size << NVME_IOSQES;
+        cmdq_size = nvme_queue_size * NVME_IOSQES_128;
 
     memset(q, 0, sizeof(*q));
 
@@ -227,60 +227,94 @@ static bool nvme_ctrl_shutdown(void)
     return FIELD_GET(NVME_CSTS_SHST, read32(nvme_base + NVME_CSTS)) == NVME_CSTS_SHST_DONE;
 }
 
-static bool nvme_exec_command(struct nvme_queue *q, struct nvme_command *cmd, u64 *result)
+/*
+ * Submit command using non-standard 128-byte IOSQEs
+ * Returns: Expected tag in CQ
+ */
+static u8 nvme_submit_command_t8015(struct nvme_queue *q, struct nvme_command *cmd)
 {
-    bool found = false;
-    u64 timeout;
-    u8 tag = nvme_type == NVME_TYPE_T8015 ? q->sq_tail : 0;
+    u8 tag = q->sq_tail;
     struct nvme_command *queue_cmd;
-    struct apple_nvmmu_tcb *tcb;
 
-    if (q->adminq || nvme_type == NVME_TYPE_T8103)
+    if (q->adminq)
         queue_cmd = &q->cmds[tag];
     else
-        queue_cmd = (void*)q->cmds + (tag << NVME_IOSQES);
+        queue_cmd = (void*)q->cmds + (tag * NVME_IOSQES_128);
 
     memcpy(queue_cmd, cmd, sizeof(*cmd));
-    
-    if (nvme_type == NVME_TYPE_T8015) {
-        queue_cmd->tag = ++(q->sq_tail);
-        if (q->sq_tail == nvme_queue_size)
-            q->sq_tail = 0;
-    } else {
-        tcb = &q->tcbs[tag];
-        queue_cmd->tag = tag;
 
-        memset(tcb, 0, sizeof(*tcb));
-        tcb->opcode = queue_cmd->opcode;
-        tcb->dma_flags = 3; // always allow read+write to the PRP pages
-        tcb->slot_id = tag;
-        tcb->len = queue_cmd->cdw12;
-        tcb->prp1 = queue_cmd->prp1;
-        tcb->prp2 = queue_cmd->prp2;
-    }
+    queue_cmd->tag = ++(q->sq_tail);
+    if (q->sq_tail == nvme_queue_size)
+        q->sq_tail = 0;
 
     /* make sure ANS2 can see the command and tcb before triggering it */
     dma_wmb();
 
-    nvme_poll_syslog();
-    if (nvme_type == NVME_TYPE_T8103) {
-        if (q->adminq)
-            write32(nvme_base + NVME_DB_LINEAR_ASQ, tag);
-        else
-            write32(nvme_base + NVME_DB_LINEAR_IOSQ, tag);
-    } else {
-        if (q->adminq)
-            write32(nvme_base + NVME_DB_ASQ, q->sq_tail);
-        else
-            write32(nvme_base + NVME_DB_IOSQ, q->sq_tail);
-    }
+    if (q->adminq)
+        write32(nvme_base + NVME_DB_ASQ, q->sq_tail);
+    else
+        write32(nvme_base + NVME_DB_IOSQ, q->sq_tail);
+
+    return (tag + 1);
+}
+
+/*
+ * Submit command using Linear SQ and IOMMU
+ * Returns: Expected tag in CQ
+ */
+static u8 nvme_submit_command_t8103(struct nvme_queue *q, struct nvme_command *cmd) {
+    u8 tag = 0;
+    struct nvme_command *queue_cmd;
+    struct apple_nvmmu_tcb *tcb;
+
+    queue_cmd = &q->cmds[tag];
+    memcpy(queue_cmd, cmd, sizeof(*cmd));
+
+    tcb = &q->tcbs[tag];
+    queue_cmd->tag = tag;
+
+    memset(tcb, 0, sizeof(*tcb));
+    tcb->opcode = queue_cmd->opcode;
+    tcb->dma_flags = 3; // always allow read+write to the PRP pages
+    tcb->slot_id = tag;
+    tcb->len = queue_cmd->cdw12;
+    tcb->prp1 = queue_cmd->prp1;
+    tcb->prp2 = queue_cmd->prp2;
+
+    /* make sure ANS2 can see the command and tcb before triggering it */
+    dma_wmb();
+
+    if (q->adminq)
+        write32(nvme_base + NVME_DB_LINEAR_ASQ, tag);
+    else
+        write32(nvme_base + NVME_DB_LINEAR_IOSQ, tag);
+
+    return tag;
+}
+
+static void nvme_nvmmu_inval(u8 tag)
+{
+    write32(nvme_base + NVMMU_TCB_INVAL, tag);
+    if (read32(nvme_base + NVMMU_TCB_STAT))
+        printf("nvme: NVMMU invalidation for tag %d failed\n", tag);
+}
+
+static bool nvme_exec_command(struct nvme_queue *q, struct nvme_command *cmd, u64 *result)
+{
+    bool found = false;
+    u64 timeout;
+    u8 cq_tag;
+
+    if (nvme_type == NVME_TYPE_T8015)
+        cq_tag = nvme_submit_command_t8015(q, cmd);
+    else
+        cq_tag = nvme_submit_command_t8103(q, cmd);
+
     nvme_poll_syslog();
 
     timeout = timeout_calculate(NVME_TIMEOUT);
     struct nvme_completion cqe;
     while (!timeout_expired(timeout)) {
-        u8 cq_tag = nvme_type == NVME_TYPE_T8015 ? tag + 1 : tag;
-
         nvme_poll_syslog();
 
         /* we need a DMA read barrier here since the CQ will be updated using DMA */
@@ -294,13 +328,7 @@ static bool nvme_exec_command(struct nvme_queue *q, struct nvme_command *cmd, u6
             if (result)
                 *result = cqe.result;
         } else {
-            printf("nvme: invalid tag in CQ: expected %d but got %d\n", cq_tag, cqe.tag);
-        }
-
-        if (nvme_type == NVME_TYPE_T8103) {
-            write32(nvme_base + NVMMU_TCB_INVAL, cqe.tag);
-            if (read32(nvme_base + NVMMU_TCB_STAT))
-                printf("nvme: NVMMU invalidation for tag %d failed\n", cqe.tag);
+            printf("nvme: invalid tag in CQ: expected %d but got %d (result=%lu)\n", cq_tag, cqe.tag, cqe.result);
         }
 
         /* increment head and switch phase once the end of the queue has been reached */
@@ -309,7 +337,10 @@ static bool nvme_exec_command(struct nvme_queue *q, struct nvme_command *cmd, u6
             q->cq_head = 0;
             q->cq_phase ^= 1;
         }
+
         if (nvme_type == NVME_TYPE_T8103) {
+            nvme_nvmmu_inval(cqe.tag);
+
             if (q->adminq)
                 write32(nvme_base + NVME_DB_ACQ, q->cq_head);
             else
