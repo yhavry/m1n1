@@ -67,7 +67,7 @@
 #define MGMT_MSG_START_EP_IDX  GENMASK(39, 32)
 #define MGMT_MSG_START_EP_FLAG BIT(1)
 
-#define RTKIT_MIN_VERSION 11
+#define RTKIT_MIN_VERSION 10
 #define RTKIT_MAX_VERSION 12
 
 #define IOVA_MASK GENMASK(35, 0)
@@ -604,15 +604,17 @@ bool rtkit_boot(rtkit_dev_t *rtk)
             }
         }
 
-        if (msg.msg0 & MGMT_MSG_EPMAP_DONE)
+        if ((msg.msg0 & MGMT_MSG_EPMAP_DONE) || want_ver < 11)
             got_epmap = true;
 
         msg.msg0 = FIELD_PREP(MGMT_TYPE, MGMT_MSG_EPMAP_REPLY);
         msg.msg0 |= FIELD_PREP(MGMT_MSG_EPMAP_BASE, base);
-        if (got_epmap)
-            msg.msg0 |= MGMT_MSG_EPMAP_REPLY_DONE;
-        else
-            msg.msg0 |= MGMT_MSG_EPMAP_REPLY_MORE;
+        if (want_ver > 10) {
+            if (got_epmap)
+                msg.msg0 |= MGMT_MSG_EPMAP_REPLY_DONE;
+            else
+                msg.msg0 |= MGMT_MSG_EPMAP_REPLY_MORE;
+        }
 
         msg.msg1 = RTKIT_EP_MGMT;
 
