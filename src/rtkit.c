@@ -67,7 +67,7 @@
 #define MGMT_MSG_START_EP_IDX  GENMASK(39, 32)
 #define MGMT_MSG_START_EP_FLAG BIT(1)
 
-#define RTKIT_MIN_VERSION 11
+#define RTKIT_MIN_VERSION 10
 #define RTKIT_MAX_VERSION 12
 
 #define IOVA_MASK GENMASK(35, 0)
@@ -575,6 +575,7 @@ bool rtkit_boot(rtkit_dev_t *rtk)
 
         u32 bitmap = FIELD_GET(MGMT_MSG_EPMAP_BITMAP, msg.msg0);
         u32 base = FIELD_GET(MGMT_MSG_EPMAP_BASE, msg.msg0);
+        u32 bitmap_enabled = 0; // required by version 10
         for (unsigned int i = 0; i < 32; i++) {
             if (bitmap & (1U << i)) {
                 u8 ep_idx = 32 * base + i;
@@ -584,18 +585,23 @@ bool rtkit_boot(rtkit_dev_t *rtk)
                 switch (ep_idx) {
                     case RTKIT_EP_CRASHLOG:
                         has_crashlog = true;
+                        bitmap_enabled |= BIT(RTKIT_EP_CRASHLOG);
                         break;
                     case RTKIT_EP_DEBUG:
                         has_debug = true;
+                        bitmap_enabled |= BIT(RTKIT_EP_DEBUG);
                         break;
                     case RTKIT_EP_IOREPORT:
                         has_ioreport = true;
+                        bitmap_enabled |= BIT(RTKIT_EP_IOREPORT);
                         break;
                     case RTKIT_EP_SYSLOG:
                         has_syslog = true;
+                        bitmap_enabled |= BIT(RTKIT_EP_SYSLOG);
                         break;
                     case RTKIT_EP_OSLOG:
                         has_oslog = true;
+                        bitmap_enabled |= BIT(RTKIT_EP_OSLOG);
                     case RTKIT_EP_MGMT:
                         break;
                     default:
@@ -609,10 +615,16 @@ bool rtkit_boot(rtkit_dev_t *rtk)
 
         msg.msg0 = FIELD_PREP(MGMT_TYPE, MGMT_MSG_EPMAP_REPLY);
         msg.msg0 |= FIELD_PREP(MGMT_MSG_EPMAP_BASE, base);
-        if (got_epmap)
-            msg.msg0 |= MGMT_MSG_EPMAP_REPLY_DONE;
-        else
-            msg.msg0 |= MGMT_MSG_EPMAP_REPLY_MORE;
+
+        if (want_ver > 10) {
+            if (got_epmap)
+                msg.msg0 |= MGMT_MSG_EPMAP_REPLY_DONE;
+            else
+                msg.msg0 |= MGMT_MSG_EPMAP_REPLY_MORE;
+        } else {
+            msg.msg0 |= bitmap_enabled;
+            got_epmap = true;
+        }
 
         msg.msg1 = RTKIT_EP_MGMT;
 
