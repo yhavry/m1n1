@@ -239,7 +239,7 @@ static u8 nvme_submit_command_t8015(struct nvme_queue *q, struct nvme_command *c
     if (q->adminq)
         queue_cmd = &q->cmds[tag];
     else
-        queue_cmd = (void*)q->cmds + (tag * NVME_IOSQES_128);
+        queue_cmd = (void *)q->cmds + (tag * NVME_IOSQES_128);
 
     memcpy(queue_cmd, cmd, sizeof(*cmd));
 
@@ -247,7 +247,7 @@ static u8 nvme_submit_command_t8015(struct nvme_queue *q, struct nvme_command *c
     if (q->sq_tail == nvme_queue_size)
         q->sq_tail = 0;
 
-    /* make sure ANS2 can see the command and tcb before triggering it */
+    /* make sure ANS2 can see the command before triggering it */
     dma_wmb();
 
     if (q->adminq)
@@ -262,7 +262,8 @@ static u8 nvme_submit_command_t8015(struct nvme_queue *q, struct nvme_command *c
  * Submit command using Linear SQ and IOMMU
  * Returns: Expected tag in CQ
  */
-static u8 nvme_submit_command_t8103(struct nvme_queue *q, struct nvme_command *cmd) {
+static u8 nvme_submit_command_t8103(struct nvme_queue *q, struct nvme_command *cmd)
+{
     u8 tag = 0;
     struct nvme_command *queue_cmd;
     struct apple_nvmmu_tcb *tcb;
@@ -281,7 +282,7 @@ static u8 nvme_submit_command_t8103(struct nvme_queue *q, struct nvme_command *c
     tcb->prp1 = queue_cmd->prp1;
     tcb->prp2 = queue_cmd->prp2;
 
-    /* make sure ANS2 can see the command and tcb before triggering it */
+    /* make sure ANS3 can see the command and tcb before triggering it */
     dma_wmb();
 
     if (q->adminq)
@@ -328,8 +329,11 @@ static bool nvme_exec_command(struct nvme_queue *q, struct nvme_command *cmd, u6
             if (result)
                 *result = cqe.result;
         } else {
-            printf("nvme: invalid tag in CQ: expected %d but got %d (result=%lu)\n", cq_tag, cqe.tag, cqe.result);
+            printf("nvme: invalid tag in CQ: expected %d but got %d\n", cq_tag, cqe.tag);
         }
+
+        if (nvme_type == NVME_TYPE_T8103)
+            nvme_nvmmu_inval(cqe.tag);
 
         /* increment head and switch phase once the end of the queue has been reached */
         q->cq_head += 1;
@@ -338,19 +342,10 @@ static bool nvme_exec_command(struct nvme_queue *q, struct nvme_command *cmd, u6
             q->cq_phase ^= 1;
         }
 
-        if (nvme_type == NVME_TYPE_T8103) {
-            nvme_nvmmu_inval(cqe.tag);
-
-            if (q->adminq)
-                write32(nvme_base + NVME_DB_ACQ, q->cq_head);
-            else
-                write32(nvme_base + NVME_DB_IOCQ, q->cq_head);
-        } else {
-            if (q->adminq)
-                write32(nvme_base + NVME_DB_ACQ, q->sq_tail);
-            else
-                write32(nvme_base + NVME_DB_IOCQ, q->sq_tail);
-        }
+        if (q->adminq)
+            write32(nvme_base + NVME_DB_ACQ, q->cq_head);
+        else
+            write32(nvme_base + NVME_DB_IOCQ, q->cq_head);
         break;
     }
 
@@ -433,7 +428,7 @@ bool nvme_init(void)
         goto out_shutdown;
     }
 
-    if (nvme_type != NVME_TYPE_T8015) {
+    if (nvme_type == NVME_TYPE_T8103) {
         /* setup controller and NVMMU for linear submission queue */
         set32(nvme_base + NVME_LINEAR_SQ_CTRL, NVME_LINEAR_SQ_CTRL_EN);
         clear32(nvme_base + NVME_UNKNOWN_CTRL, NVME_UNKNOWN_CTRL_PRP_NULL_CHECK);

@@ -15,7 +15,7 @@ enum nvme_type {
     /* Non-standard 128-byte IOSQEs */
     NVME_TYPE_T8015,
 
-    /* Uses NVMMU and Linear submission queues */
+    /* NVMMU and linear submission queues */
     NVME_TYPE_T8103,
 };
 
