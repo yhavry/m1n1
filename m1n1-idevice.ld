@@ -30,7 +30,7 @@ SECTIONS {
         LONG(0x100000c); /* cputype */
         LONG(0x00); /* cpusubtype */
         LONG(0x02); /* filetype */
-        LONG(6); /* ncmds */
+        LONG(7); /* ncmds */
         LONG(_cmd_end - _cmd_start); /* sizeofcmds */
         LONG(4); /* flags */
         LONG(0); /* reserved */
@@ -102,6 +102,22 @@ SECTIONS {
         QUAD(SIZEOF(.data)); /* filesize */
         LONG(PROT_READ | PROT_WRITE); /* maxprot */
         LONG(PROT_READ | PROT_WRITE); /* initprot */
+        LONG(0); /* nsects */
+        LONG(0); /* flags */
+
+        /* Modified by iBoot: __PRELINK_TEXT */
+        LONG(0x19); /* type = SEGMENT_64 */
+        LONG(0x48); /* cmdsize */
+        LONG(0x52505f5f); /* segname = "__PR" */
+        LONG(0x4e494c45); /* segname = "ELIN" */
+        LONG(0x45545f4b); /* segname = "K_TE" */
+        LONG(0x00005458); /* segname = "XT.." */
+        QUAD(_prelink_text_start + _va_off); /* vmaddr */
+        QUAD(_prelink_text_end - _prelink_text_start); /* vmsize */
+        QUAD(_prelink_text_start - _base); /* fileoff */
+        QUAD(_prelink_text_start - _prelink_text_end); /* filesize */
+        LONG(PROT_READ | PROT_EXECUTE); /* maxprot */
+        LONG(PROT_READ | PROT_EXECUTE); /* initprot */
         LONG(0); /* nsects */
         LONG(0); /* flags */
 
@@ -190,6 +206,8 @@ SECTIONS {
         . = ALIGN(0x4000);
     } :data
     _data_size = . - _data_start;
+    _prelink_text_start = .;
+    _prelink_text_end = _prelink_text_start + 0x4000;
     _end = .;
     _payload_start = .;
     _payload_end = . + _max_payload_size;
