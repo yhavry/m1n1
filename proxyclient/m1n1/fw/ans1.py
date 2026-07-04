@@ -41,8 +41,6 @@ p.ic_ivau(code, len(util.data))
 
 class ANS_Message(Register64):
     EP = 63, 56, Constant(0x20)
-    IO = 1
-    CMD = 0
 
 class ANS_SetBase(ANS_Message):
     BASE = 51, 20
@@ -55,6 +53,7 @@ class ANS_Cmd(ANS_Message):
     ARG_2 = 19, 16 # (NSID * 2) & 0xf
     ARG_3 = 15, 12 # (NSID * 3) & 0xf
     NSID = 7, 4
+    IO = 1
     CMD = 0
 
 class ANS_IO_Cmd(ANS_Cmd):
@@ -62,6 +61,12 @@ class ANS_IO_Cmd(ANS_Cmd):
 
 class ANS_Admin_Cmd(ANS_Cmd):
     IO = 1
+
+class ANS_Reply(ANS_Message):
+    EP = 63, 56, Constant(0x20)
+    STATUS = 15, 12
+    TAG = 11, 4
+    TYPE = 3, 0
 
 class ANSEndpoint(AKFBaseEndpoint):
     BASE_MESSAGE = ANS_Message
@@ -71,6 +76,7 @@ class ANSEndpoint(AKFBaseEndpoint):
         super().__init__(*args, **kwargs)
         self.mon = RegMonitor(u, ascii=True, bufsize=0x8000000)
         self.base = None
+        self.in_progress = False
 
     def ns_setup(self, ns):
         # UNK may be multiplier of ARG2 and ARG3
@@ -126,13 +132,16 @@ class ANSEndpoint(AKFBaseEndpoint):
         self.akf.u.proxy.memset32(self.base, 0, CMD_BUFFER_PER_NSID * NUM_NSID)   
         self.mon.add(self.base, CMD_BUFFER_PER_NSID)
         self.send(ANS_SetBase(BASE=self.base, UNK=0x118, IO=0, CMD=0))
-        self.akf.work()
-        self.mon.poll()
+        self.in_progress = True
+        while self.in_progress:
+            self.akf.work()
+            self.mon.poll()
         for i in range(0, 8):
             self.ns_setup(i)
         for i in range(0, 8):
             self.akf.u.proxy.write32(self.base + CMD_BUFFER_PER_NSID * i, i << 8)
         self.mon.poll()
+        print(f"cmd buffer: {self.base:#x}")
         """
         cmd = self.base
 
@@ -156,7 +165,14 @@ class ANSEndpoint(AKFBaseEndpoint):
             self.akf.u.proxy.free(self.base)
 
     def handle_msg(self, msg):
-        print(f"received ANS endpoint msg: {msg:#x}")
+        msg_f = ANS_Reply(msg)
+        # 2 == complete, 4 == in progress ? !
+        print(f"Tag: {msg_f.TAG} return status {msg_f.STATUS:#x}, type: {msg_f.TYPE:#x}")
+        if (msg_f.TYPE == 2):
+            self.in_progress = False
+        if (msg_f.TYPE not in (2, 4)):
+            print("Received Unknown ANS Message")
+            return False
         return True
 
 class ANSClient(StandardAKF):
