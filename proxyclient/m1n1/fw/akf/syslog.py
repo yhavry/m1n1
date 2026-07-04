@@ -66,8 +66,8 @@ class AKFSysLogEndpoint(AKFBaseEndpoint):
         stride = 0x20 + self.entrysize
         log = self.akf.ioread(self.iobuffer_dva + msg.INDEX * stride, stride)
         hdr, unk, context, logmsg = struct.unpack(f"<II24s{self.entrysize}s", log)
-        context = context.split(b"\x00")[0].decode("akfii")
-        logmsg = logmsg.split(b"\x00")[0].decode("akfii").rstrip("\n")
+        context = context.split(b"\x00")[0].decode("ascii")
+        logmsg = logmsg.split(b"\x00")[0].decode("ascii").rstrip("\n")
         self.log(f"* [{context}]{logmsg}")
         self.send(msg)
         return True

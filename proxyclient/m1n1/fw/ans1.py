@@ -48,8 +48,12 @@ class ANSEndpoint(AKFBaseEndpoint):
         self.mon = RegMonitor(u, ascii=True, bufsize=0x8000000)
         self.base = None
 
-    def ns_setup(self, ns, arg2, arg3):
+    def ns_setup(self, ns):
         # UNK may be multiplier of ARG2 and ARG3
+        arg3 = (ns * 3)
+        # "Carry over" from arg3 to arg2, like in manual addition
+        arg2 = ((ns * 2) & 0xf) + (arg3 >> 4) 
+        arg3 &= 0xf
         self.send(ANS_Admin_Cmd(ARG_2=arg2, ARG_3=arg3, NSID=ns, UNK=0x23, IO=0, CMD=1))
         self.akf.work()
         self.mon.poll()
@@ -70,14 +74,8 @@ class ANSEndpoint(AKFBaseEndpoint):
         self.send(ANS_SetBase(BASE=self.base, UNK=0x118, IO=0, CMD=0))
         self.akf.work()
         self.mon.poll()
-        self.ns_setup(0, 0, 0)
-        self.ns_setup(1, 2, 3)
-        self.ns_setup(2, 4, 6)
-        self.ns_setup(3, 6, 9)
-        self.ns_setup(4, 8, 0xc)
-        self.ns_setup(5, 0xa, 0xf)
-        self.ns_setup(6, 0xd, 2) # arg2 off by one ????
-        self.ns_setup(7, 0xf, 5)
+        for i in range(0, 8):
+            self.ns_setup(i)
 
     def stop(self):
         if self.base:
