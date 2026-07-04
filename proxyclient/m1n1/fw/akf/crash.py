@@ -3,6 +3,35 @@ from .base import *
 from ...utils import *
 from construct import *
 from ...sysreg import *
+from enum import IntEnum
+
+class SPSR_M_V7(IntEnum):
+    User = 0x10
+    FIQ = 0x11
+    IRQ = 0x12
+    Supervisor = 0x13
+    Monitor = 0x16
+    Abort = 0x17
+    Hyp = 0x1a
+    Undefined = 0x1b
+    System = 0x1f
+
+class SPSR_V7(Register32):
+    N = 31
+    Z = 30
+    C = 29
+    V = 28
+    Q = 27
+    IT_HI = 26, 25
+    J = 24
+    GE = 19, 16
+    IT_LO = 15, 10
+    E = 9
+    A = 8
+    I = 7
+    F = 6
+    T = 5
+    M = 4, 0, SPSR_M_V7
 
 class CrashLogMessage(Register64):
     EP = 63, 56, Constant(1)
@@ -32,6 +61,19 @@ CrashCtim = Struct(
     "time" / Int64ul,
 )
 
+CrashCrgA = Struct(
+    "unk_0" / Int32ul,
+    "unk_4" / Int32ul,
+    "regs" / Array(16, Hex(Int32ul)),
+    "spsr" / Int32ul,
+    "unk_x1" / Int32ul,
+    "stack" / Bytes(0x100),
+    "unk_x2" / Int32ul,
+    "unk_x3" / Int32ul,
+    "unk_x4" / Int32ul,
+    "unk_x5" / Int32ul,
+)
+
 CrashCmbx = Struct(
     "hdr" / Array(4, Hex(Int32ul)),
     "type" / Int32ul,
@@ -58,23 +100,6 @@ CrashCasC = Struct(
     "lsu_err_sts" / Hex(Int64ul),
     "fed_err_sts" / Hex(Int64ul),
     "mmu_err_sts" / Hex(Int64ul)
-)
-
-CrashCrg8 = Struct(
-    "unk_0" / Int32ul,
-    "unk_4" / Int32ul,
-    "regs" / Array(31, Hex(Int64ul)),
-    "sp" / Int64ul,
-    "pc" / Int64ul,
-    "psr" / Int64ul,
-    "cpacr" / Int64ul,
-    "fpsr" / Int64ul,
-    "fpcr" / Int64ul,
-    "unk" / Array(64, Hex(Int64ul)),
-    "far" / Int64ul,
-    "unk_X" / Int64ul,
-    "esr" / Int64ul,
-    "unk_Z" / Int64ul,
 )
 
 CrtkEntry = Struct(
@@ -119,8 +144,8 @@ CrashEntry = Struct(
         "Cver": CrashCver,
         "Ctim": CrashCtim,
         "Cmbx": CrashCmbx,
+        "CrgA": CrashCrgA,
         "Cstr": CrashCstr,
-        "Crg8": CrashCrg8,
         "Ccst": CrashCcst,
         "CasC": CrashCasC,
         "Crtk": CrashCrtk,
@@ -167,57 +192,6 @@ class CrashLogParser:
         print(f"RTKit Version: {entry.payload.version}")
         print()
 
-    def Crg8(self, entry):
-        print(f"Exception info:")
-
-        ctx = entry.payload
-
-        addr = self.akf.addr
-
-        spsr = SPSR(ctx.psr)
-        esr = ESR(ctx.esr)
-        elr = ctx.pc
-        far_phys = self.akf.iotranslate(ctx.far, 1)[0][0]
-        elr_phys = self.akf.iotranslate(ctx.pc, 1)[0][0]
-        sp_phys = self.akf.iotranslate(ctx.sp, 1)[0][0]
-
-        print(f"  == Exception taken from {spsr.M.name} ==")
-        el = spsr.M >> 2
-        print(f"  SPSR   = {spsr}")
-        print(f"  ELR    = {addr(elr)}" + (f" (0x{elr_phys:x})" if elr_phys else ""))
-        print(f"  ESR    = {esr}")
-        print(f"  FAR    = {addr(ctx.far)}" + (f" (0x{far_phys:x})" if far_phys else ""))
-        print(f"  SP     = {ctx.sp:#x}" + (f" (0x{sp_phys:x})" if sp_phys else ""))
-
-        for i in range(0, 31, 4):
-            j = min(30, i + 3)
-            print(f"  {f'x{i}-x{j}':>7} = {' '.join(f'{r:016x}' for r in ctx.regs[i:j + 1])}")
-
-        # print AGX objects where available
-        for i in range(31):
-            this_addr = addr(ctx.regs[i])
-            if "@" in this_addr:
-                print("  x%d: %s" % (i, this_addr))
-
-        if elr_phys:
-            v = self.akf.p.read32(elr_phys)
-
-            print()
-            if v == 0xabad1dea:
-                print("  == Faulting code is not available ==")
-            else:
-                print("  == Faulting code ==")
-                dist = 16
-                self.akf.u.disassemble_at(elr_phys - dist * 4, (dist * 2 + 1) * 4, elr_phys)
-
-        if sp_phys:
-            for n in range(-4, 4):
-                sp_ptr = sp_phys+8*n
-                v = self.akf.p.read64(sp_ptr)
-                print(f"  stack @ 0x{sp_ptr:016x}: {v:016x}")
-
-        print()
-
     def Cstr(self, entry):
         print(f"Message {entry.payload.id}: {entry.payload.string}")
         print()
@@ -230,6 +204,23 @@ class CrashLogParser:
         print(f"Mailbox log (type {entry.payload.type}, index {entry.payload.index}):")
         for i, msg in enumerate(entry.payload.messages):
             print(f" #{i:3d} @{msg.timestamp:#10x} ep={msg.endpoint:#4x} {msg.message:#18x}")
+        print()
+
+    def CrgA(self, entry):
+        print(f"Exception info:")
+
+        ctx = entry.payload
+
+        spsr = SPSR_V7(ctx.spsr)
+
+        print(f"  == Exception taken from {spsr.M.name} Mode ==")
+        print(f"  SPSR   = {spsr}")
+        print(f"  SP     = {ctx.regs[13]:#x}")
+
+        for i in range(0, 16, 4):
+            j = min(15, i + 3)
+            print(f"  {f'r{i}-r{j}':>7} = {' '.join(f'{r:08x}' for r in ctx.regs[i:j + 1])}")
+
         print()
 
     def CLHE(self, entry):
