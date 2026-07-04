@@ -12,9 +12,12 @@ p.pmgr_adt_power_enable("/arm-io/ans")
 
 ans = ANSClient(u, adt_path="/arm-io/ans")
 ans.start()
-ans.start_ep(0x20)
-
+#ans.start_ep(0x20)
 ansep = ans.epmap[0x20]
+
+while ans.epmap[0].ap_power_state != 0x20:
+    ans.work()
+
 ansep.start_io()
 
 run_shell(globals(), msg="Have fun!")
