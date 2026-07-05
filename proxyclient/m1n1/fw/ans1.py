@@ -32,8 +32,8 @@ ASP_CMD_MAX_BUFS   = 512 # ?
 
 #guesses based on above
 
-read_ops  = (0, 0x80010, 0x80036, 0x80031, 0x80030, 0x80035, 0x80037, 0x80038)
-write_ops = (0, 0x80020, 0x80046, 0x80041, 0x80040, 0x80045, 0x80047, 0x80048)
+read_ops  = (0, 0x10, 0x36, 0x31, 0x30, 0x35, 0x37, 0x38)
+write_ops = (0, 0x20, 0x46, 0x41, 0x40, 0x45, 0x47, 0x48)
 
 code = u.malloc(0x1000)
 
@@ -143,7 +143,7 @@ class ANSEndpoint(AKFBaseEndpoint):
         self.mon.poll()
 
         cmd = self.cmdbuf_for_tag(0)
-        self.akf.u.proxy.write32(cmd + ASP_CMD_OP, read_ops[nsid])
+        self.akf.u.proxy.write32(cmd + ASP_CMD_OP, read_ops[nsid] | 8 << 16)
         self.akf.u.proxy.write32(cmd + ASP_CMD_LBA_OFF, lba)
         self.akf.u.proxy.write32(cmd + ASP_CMD_NUM_LBA, 1) # num buffers in out_buffer
         self.akf.u.proxy.write32(cmd + ASP_CMD_OUT_BUFFER, bfr >> 12)
