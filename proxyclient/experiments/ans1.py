@@ -22,4 +22,4 @@ ansep.start_io()
 
 run_shell(globals(), msg="Have fun!")
 
-ans.stop()
+ans.stop(state=0x1)
