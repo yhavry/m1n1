@@ -24,7 +24,16 @@ ASP_CMD_MAX_BUFS   = 512 # ?
 # LLB read 0x80331
 # SYSCFG read 0x80637
 
-read_ops = (0, 0x80110, 0x80236, 0x80331, 0 , 0, 0x80637, 0)
+# 7 IS PANICLOG and may not be always readable
+
+# bit [11:8] seem to be the NSID here
+#read_ops = (0, 0x80110, 0x80236, 0x80331, 0x80430 , 0x80535, 0x80637, 0)
+#write_ops = (0, 0, 0x80246, 0, 0x80440, 0, 0, 0x80748)
+
+#guesses based on above
+
+read_ops  = (0, 0x80010, 0x80036, 0x80031, 0x80030, 0x80035, 0x80037, 0x80038)
+write_ops = (0, 0x80020, 0x80046, 0x80041, 0x80040, 0x80045, 0x80047, 0x80048)
 
 code = u.malloc(0x1000)
 
@@ -59,10 +68,10 @@ class ANS_SetBase(ANS_Message):
 
 class ANS_Cmd(ANS_Message):
     UNK = 31, 24
-    ARG_2 = 19, 16 # (NSID * 2) & 0xf
-    ARG_3 = 15, 12 # (NSID * 3) & 0xf
-    NSID = 7, 4
-    IO = 1
+    ARG_2 = 19, 16 # (TAG * 2) & 0xf
+    ARG_3 = 15, 12 # (TAG * 3) & 0xf
+    TAG = 7, 4
+    IO = 1 # this probably means "use command buffer"
     CMD = 0
 
 class ANS_IO_Cmd(ANS_Cmd):
@@ -94,21 +103,21 @@ class ANSEndpoint(AKFBaseEndpoint):
         # "Carry over" from arg3 to arg2, like in manual addition
         arg2 = ((ns * 2) & 0xf) + (arg3 >> 4) 
         arg3 &= 0xf
-        self.send(ANS_Admin_Cmd(ARG_2=arg2, ARG_3=arg3, NSID=ns, UNK=0x23, IO=0, CMD=1))
+        self.send(ANS_Admin_Cmd(ARG_2=arg2, ARG_3=arg3, TAG=ns, UNK=0x23, IO=0, CMD=1))
         self.akf.work()
         self.mon.poll()
 
-    def send_cmd(self, ns, io):
+    def send_cmd(self, tag, io):
         self.akf.u.proxy.call(util.dma_wmb)
         self.in_progress = True
-        self.send(ANS_Cmd(ARG_2=0xf, ARG_3=0xf,  NSID=ns, IO=io, CMD=1))
+        self.send(ANS_Cmd(ARG_2=0xf, ARG_3=0xf, TAG=tag, IO=io, CMD=1))
         while self.in_progress:
             self.akf.work()
         self.akf.u.proxy.call(util.dma_rmb)
         return self.base
     
-    def cmdbuf_for_ns(self, ns):
-        buf = self.base + CMD_BUFFER_PER_NSID * ns
+    def cmdbuf_for_tag(self, tag=0):
+        buf = self.base + CMD_BUFFER_PER_NSID * tag
         self.akf.u.proxy.memset32(buf, 0, CMD_BUFFER_PER_NSID)
         return buf
 
@@ -133,20 +142,20 @@ class ANSEndpoint(AKFBaseEndpoint):
 
         self.mon.poll()
 
-        cmd = self.cmdbuf_for_ns(nsid)
+        cmd = self.cmdbuf_for_tag(0)
         self.akf.u.proxy.write32(cmd + ASP_CMD_OP, read_ops[nsid])
         self.akf.u.proxy.write32(cmd + ASP_CMD_LBA_OFF, lba)
         self.akf.u.proxy.write32(cmd + ASP_CMD_NUM_LBA, 1) # num buffers in out_buffer
         self.akf.u.proxy.write32(cmd + ASP_CMD_OUT_BUFFER, bfr >> 12)
 
-        self.send_cmd(nsid, True)
+        self.send_cmd(0, True)
 
     def start(self):
         pass
 
     def identify(self):
         # IDENTIFY
-        cmd = self.cmdbuf_for_ns(0)
+        cmd = self.cmdbuf_for_tag(0)
         self.akf.u.proxy.write32(cmd + ASP_CMD_OP, 0 << 8)
         self.send_cmd(0, True)
 
@@ -158,20 +167,20 @@ class ANSEndpoint(AKFBaseEndpoint):
     def cmd_init(self):
         # These are done by iboot after identification before first disk I/O
         # This updates the command buffer, so maybe another identification
-        cmd = self.cmdbuf_for_ns(0)
+        cmd = self.cmdbuf_for_tag(0)
         self.akf.u.proxy.write32(cmd + ASP_CMD_OP, 0 << 8 | 0x72) # 'r'
         self.send_cmd(0, True)
 
         # These are possibly power management
         # maybe tunables?
-        cmd = self.cmdbuf_for_ns(0)
+        cmd = self.cmdbuf_for_tag(0)
         self.akf.u.proxy.write32(cmd + ASP_CMD_OP, 0 << 8 | 0x80)
         self.akf.u.proxy.write32(cmd + 0x38, 0x2a)
         self.akf.u.proxy.write32(cmd + 0x44, 0x400000)
         self.akf.u.proxy.write32(cmd + 0x48, 0x400000)
         self.send_cmd(0, True)
 
-        cmd = self.cmdbuf_for_ns(0)
+        cmd = self.cmdbuf_for_tag(0)
         self.akf.u.proxy.write32(cmd + ASP_CMD_OP, 0 << 8 | 0x80)
         self.akf.u.proxy.write32(cmd + 0x38, 0x13)
         self.akf.u.proxy.write32(cmd + 0x3c, 0x3)
@@ -185,7 +194,7 @@ class ANSEndpoint(AKFBaseEndpoint):
         self.akf.u.proxy.write32(cmd + 0x60, 0x2)
         self.send_cmd(0, True)
 
-        cmd = self.cmdbuf_for_ns(0)
+        cmd = self.cmdbuf_for_tag(0)
         self.akf.u.proxy.write32(cmd + ASP_CMD_OP, 0 << 8 | 0x80)
         self.akf.u.proxy.write32(cmd + 0x38, 0x25)
         self.akf.u.proxy.write32(cmd + 0x3c, 0x3)
@@ -200,7 +209,7 @@ class ANSEndpoint(AKFBaseEndpoint):
 
         # "setting asp to high power mode"
         # this updates the command buffer
-        cmd = self.cmdbuf_for_ns(0)
+        cmd = self.cmdbuf_for_tag(0)
         self.akf.u.proxy.write32(cmd + ASP_CMD_OP, 0 << 8 | 0x80)
         self.akf.u.proxy.write32(cmd + 0x38, 0x26)
         self.akf.u.proxy.write32(cmd + 0x44, 0x1)

@@ -11,6 +11,11 @@ from m1n1.shell import run_shell
 p.pmgr_adt_power_enable("/arm-io/ans")
 
 ans = ANSClient(u, adt_path="/arm-io/ans")
+
+if len(sys.argv) == 2 and sys.argv[1] == "stop":
+    ans.stop(state=0x1)
+    exit(0)
+
 ans.start()
 #ans.start_ep(0x20)
 ansep = ans.epmap[0x20]
