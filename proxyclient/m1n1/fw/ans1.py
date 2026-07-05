@@ -34,7 +34,7 @@ ASP_CMD_MAX_BUFS   = 512 # ?
 #guesses based on above
 
 read_ops  = (0, 0x10, 0x36, 0x31, 0x30, 0x35, 0x37, 0x38)
-write_ops = (0, 0x20, 0x46, 0x41, 0x40, 0x45, 0x47, 0x48)
+write_ops = (0, 0, 0x46, 0x41, 0x40, 0x45, 0x47, 0x48)
 
 code = u.malloc(0x1000)
 
@@ -139,6 +139,35 @@ class ANSEndpoint(AKFBaseEndpoint):
 
         cmd = self.cmdbuf_for_tag(USED_TAG)
         self.akf.u.proxy.write32(cmd + ASP_CMD_OP, read_ops[nsid] | 8 << 16 | USED_TAG << 8)
+        self.akf.u.proxy.write32(cmd + ASP_CMD_LBA_OFF, lba)
+        self.akf.u.proxy.write32(cmd + ASP_CMD_NUM_LBA, 1) # num buffers in out_buffer
+        self.akf.u.proxy.write32(cmd + ASP_CMD_OUT_BUFFER, bfr >> 12)
+
+        self.send_cmd(USED_TAG, True)
+
+    def asp_write(self, nsid, lba, bfr):
+        if not self.base:
+            print("IO not initialized yet")
+            return
+        
+        if nsid >= NUM_NSID:
+            print("Invalid NSID!")
+            return
+        
+        # this seems to be what determines which NSID gets read
+        # message's nsid might just be the offset into command buffer (?)
+        if not read_ops[nsid]:
+            print(f"NSID {nsid} has unknown write OP")
+            return
+        
+        if ((bfr & 0xffffff00000000fff) != 0):
+            print("Buffer not 0x1000 aligned")
+            return
+
+        self.mon.poll()
+
+        cmd = self.cmdbuf_for_tag(USED_TAG)
+        self.akf.u.proxy.write32(cmd + ASP_CMD_OP, write_ops[nsid] | 8 << 16 | USED_TAG << 8)
         self.akf.u.proxy.write32(cmd + ASP_CMD_LBA_OFF, lba)
         self.akf.u.proxy.write32(cmd + ASP_CMD_NUM_LBA, 1) # num buffers in out_buffer
         self.akf.u.proxy.write32(cmd + ASP_CMD_OUT_BUFFER, bfr >> 12)
