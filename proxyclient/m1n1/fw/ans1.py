@@ -10,7 +10,7 @@ from .akf import StandardAKF
 from .akf.base import *
 
 CMD_BUFFER_PER_TAG = 2240
-NUM_NSID = 8
+NUM_NSID = 11
 
 # Tag 8 works sometimes but the firmware would eventually crash, so there
 # is probably a tag array inside the firmware for tags that is 8 long
@@ -25,7 +25,7 @@ ASP_CMD_OUT_BUFFER = 0x30
 ASP_CMD_MAX_BUFS   = 512 # ?
 
 # From oob read syslog
-# 0, MAIN, NVRAM, FW, LLB, EFFACE, SYSCFG, PANICLOG 
+# 0, MAIN, NVRAM, FW, LLB, EFFACE, SYSCFG, PANICLOG, UTILDM, DM, CTRLBITS
 
 # bit [11:8] seem to be the NSID here
 #read_ops = (0, 0x80110, 0x80236, 0x80331, 0x80430 , 0x80535, 0x80637, 0)
@@ -33,8 +33,8 @@ ASP_CMD_MAX_BUFS   = 512 # ?
 
 #guesses based on above
 
-read_ops  = (0, 0x10, 0x36, 0x31, 0x30, 0x35, 0x37, 0x38)
-write_ops = (0, 0, 0x46, 0x41, 0x40, 0x45, 0x47, 0x48)
+read_ops  = (0, 0x10, 0x36, 0x31, 0x30, 0x35, 0x37, 0x38, 0x32, 0x33, 0x34)
+write_ops = (0, 0x42, 0x46, 0x41, 0x40, 0x45, 0x47, 0x48, 0x42, 0x43, 0x44)
 
 code = u.malloc(0x1000)
 
