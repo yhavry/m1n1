@@ -11,7 +11,12 @@ from .akf.base import *
 
 CMD_BUFFER_PER_TAG = 2240
 NUM_NSID = 8
+
+# Tag 8 works sometimes but the firmware would eventually crash, so there
+# is probably a tag array inside the firmware for tags that is 8 long
 NUM_TAGS = 8
+
+USED_TAG = 7
 
 ASP_CMD_OP         = 0x0
 ASP_CMD_LBA_OFF    = 0x4
@@ -66,7 +71,7 @@ class ANS_Cmd(ANS_Message):
     UNK = 31, 24
     ARG_2 = 19, 16 # (TAG * 2) & 0xf
     ARG_3 = 15, 12 # (TAG * 3) & 0xf
-    TAG = 7, 4
+    TAG = 11, 4
     IO = 1 # this probably means "use command buffer"
     CMD = 0
 
@@ -132,22 +137,22 @@ class ANSEndpoint(AKFBaseEndpoint):
 
         self.mon.poll()
 
-        cmd = self.cmdbuf_for_tag(0)
-        self.akf.u.proxy.write32(cmd + ASP_CMD_OP, read_ops[nsid] | 8 << 16)
+        cmd = self.cmdbuf_for_tag(USED_TAG)
+        self.akf.u.proxy.write32(cmd + ASP_CMD_OP, read_ops[nsid] | 8 << 16 | USED_TAG << 8)
         self.akf.u.proxy.write32(cmd + ASP_CMD_LBA_OFF, lba)
         self.akf.u.proxy.write32(cmd + ASP_CMD_NUM_LBA, 1) # num buffers in out_buffer
         self.akf.u.proxy.write32(cmd + ASP_CMD_OUT_BUFFER, bfr >> 12)
 
-        self.send_cmd(0, True)
+        self.send_cmd(USED_TAG, True)
 
     def start(self):
         pass
 
     def identify(self):
         # IDENTIFY
-        cmd = self.cmdbuf_for_tag(0)
-        self.akf.u.proxy.write32(cmd + ASP_CMD_OP, 0 << 8)
-        self.send_cmd(0, True)
+        cmd = self.cmdbuf_for_tag(USED_TAG)
+        self.akf.u.proxy.write32(cmd + ASP_CMD_OP, USED_TAG << 8)
+        self.send_cmd(USED_TAG, True)
 
         lba = self.akf.u.proxy.read32(cmd + 0x30)
         lba_sz = self.akf.u.proxy.read32(cmd + 0x34)
@@ -157,21 +162,21 @@ class ANSEndpoint(AKFBaseEndpoint):
     def cmd_init(self):
         # These are done by iboot after identification before first disk I/O
         # This updates the command buffer, so maybe another identification
-        cmd = self.cmdbuf_for_tag(0)
-        self.akf.u.proxy.write32(cmd + ASP_CMD_OP, 0 << 8 | 0x72) # 'r'
-        self.send_cmd(0, True)
+        cmd = self.cmdbuf_for_tag(USED_TAG)
+        self.akf.u.proxy.write32(cmd + ASP_CMD_OP, USED_TAG << 8 | 0x72) # 'r'
+        self.send_cmd(USED_TAG, True)
 
         # These are possibly power management
         # maybe tunables?
-        cmd = self.cmdbuf_for_tag(0)
-        self.akf.u.proxy.write32(cmd + ASP_CMD_OP, 0 << 8 | 0x80)
+        cmd = self.cmdbuf_for_tag(USED_TAG)
+        self.akf.u.proxy.write32(cmd + ASP_CMD_OP, USED_TAG << 8 | 0x80)
         self.akf.u.proxy.write32(cmd + 0x38, 0x2a)
         self.akf.u.proxy.write32(cmd + 0x44, 0x400000)
         self.akf.u.proxy.write32(cmd + 0x48, 0x400000)
-        self.send_cmd(0, True)
+        self.send_cmd(USED_TAG, True)
 
-        cmd = self.cmdbuf_for_tag(0)
-        self.akf.u.proxy.write32(cmd + ASP_CMD_OP, 0 << 8 | 0x80)
+        cmd = self.cmdbuf_for_tag(USED_TAG)
+        self.akf.u.proxy.write32(cmd + ASP_CMD_OP, USED_TAG << 8 | 0x80)
         self.akf.u.proxy.write32(cmd + 0x38, 0x13)
         self.akf.u.proxy.write32(cmd + 0x3c, 0x3)
         self.akf.u.proxy.write32(cmd + 0x44, 0x2)
@@ -182,10 +187,10 @@ class ANSEndpoint(AKFBaseEndpoint):
         self.akf.u.proxy.write32(cmd + 0x58, 0x4)
         self.akf.u.proxy.write32(cmd + 0x5c, 0x2)
         self.akf.u.proxy.write32(cmd + 0x60, 0x2)
-        self.send_cmd(0, True)
+        self.send_cmd(USED_TAG, True)
 
-        cmd = self.cmdbuf_for_tag(0)
-        self.akf.u.proxy.write32(cmd + ASP_CMD_OP, 0 << 8 | 0x80)
+        cmd = self.cmdbuf_for_tag(USED_TAG)
+        self.akf.u.proxy.write32(cmd + ASP_CMD_OP, USED_TAG << 8 | 0x80)
         self.akf.u.proxy.write32(cmd + 0x38, 0x25)
         self.akf.u.proxy.write32(cmd + 0x3c, 0x3)
         self.akf.u.proxy.write32(cmd + 0x44, 0x1)
@@ -199,12 +204,12 @@ class ANSEndpoint(AKFBaseEndpoint):
 
         # "setting asp to high power mode"
         # this updates the command buffer
-        cmd = self.cmdbuf_for_tag(0)
-        self.akf.u.proxy.write32(cmd + ASP_CMD_OP, 0 << 8 | 0x80)
+        cmd = self.cmdbuf_for_tag(USED_TAG)
+        self.akf.u.proxy.write32(cmd + ASP_CMD_OP, USED_TAG << 8 | 0x80)
         self.akf.u.proxy.write32(cmd + 0x38, 0x26)
         self.akf.u.proxy.write32(cmd + 0x44, 0x1)
 
-        self.send_cmd(0, True)
+        self.send_cmd(USED_TAG, True)
 
     def start_io(self):
         # this is used by the IOP so we use proxy function here
@@ -229,10 +234,10 @@ class ANSEndpoint(AKFBaseEndpoint):
 
     def handle_msg(self, msg):
         msg_f = ANS_Reply(msg)
-        # 2 == in progress, 4 == complete
+        # 2 == complete, 4 == ???
         if self.akf.verbose >= 3:
             print(f"Tag: {msg_f.TAG} return status {msg_f.STATUS:#x}, type: {msg_f.TYPE:#x}")
-        if (msg_f.TYPE == 4):
+        if (msg_f.TYPE == 2):
             self.in_progress = False
         if (msg_f.TYPE not in (2, 4)):
             print("Received Unknown ANS Message")
