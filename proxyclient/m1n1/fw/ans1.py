@@ -26,15 +26,11 @@ ASP_CMD_MAX_BUFS   = 512 # ?
 
 # From oob read syslog
 # 0, MAIN, NVRAM, FW, LLB, EFFACE, SYSCFG, PANICLOG, UTILDM, DM, CTRLBITS
-
-# bit [11:8] seem to be the NSID here
-#read_ops = (0, 0x80110, 0x80236, 0x80331, 0x80430 , 0x80535, 0x80637, 0)
-#write_ops = (0, 0, 0x80246, 0, 0x80440, 0, 0, 0x80748)
-
-#guesses based on above
+# 0x15 0x16 0x18 require write command enabled
+# one of 25,26,27,28,41,43 enabled writes
 
 read_ops  = (0, 0x10, 0x36, 0x31, 0x30, 0x35, 0x37, 0x38, 0x32, 0x33, 0x34)
-write_ops = (0, 0x42, 0x46, 0x41, 0x40, 0x45, 0x47, 0x48, 0x42, 0x43, 0x44)
+write_ops = (0, 0, 0x46, 0x41, 0x40, 0x45, 0x47, 0x48, 0x42, 0x43, 0x44)
 
 code = u.malloc(0x1000)
 
@@ -171,6 +167,12 @@ class ANSEndpoint(AKFBaseEndpoint):
         self.akf.u.proxy.write32(cmd + ASP_CMD_LBA_OFF, lba)
         self.akf.u.proxy.write32(cmd + ASP_CMD_NUM_LBA, 1) # num buffers in out_buffer
         self.akf.u.proxy.write32(cmd + ASP_CMD_OUT_BUFFER, bfr >> 12)
+
+        self.send_cmd(USED_TAG, True)
+
+    def set_writable(self):
+        cmd = self.cmdbuf_for_tag(USED_TAG)
+        self.akf.u.proxy.write32(cmd + ASP_CMD_OP, 0x19 | 8 << 16 | USED_TAG << 8)
 
         self.send_cmd(USED_TAG, True)
 
