@@ -77,6 +77,7 @@ class ANSEndpoint(AKFBaseEndpoint):
         self.mon = RegMonitor(u, ascii=True, bufsize=0x8000000)
         self.base = None
         self.in_progress = False
+        self.verbose = 1
 
     def ns_setup(self, ns):
         # UNK may be multiplier of ARG2 and ARG3
@@ -138,7 +139,7 @@ class ANSEndpoint(AKFBaseEndpoint):
         lba = self.akf.u.proxy.read32(cmd + 0x30)
         lba_sz = self.akf.u.proxy.read32(cmd + 0x34)
 
-        print(f"{lba} LBAs, sector size {lba_sz}, total {lba * lba_sz} bytes")
+        print(f"[ansep] {lba} LBAs, sector size {lba_sz}, total {lba * lba_sz} bytes")
 
     def cmd_init(self):
         # These are done by iboot after identification before first disk I/O
@@ -206,9 +207,8 @@ class ANSEndpoint(AKFBaseEndpoint):
         for i in range(0, 8):
             self.akf.u.proxy.write32(self.base + CMD_BUFFER_PER_NSID * i, i << 8)
         self.mon.poll()
-        print(f"cmd buffer: {self.base:#x}")
-
-        self.identify()
+        if (self.verbose >= 1):
+            self.identify()
         self.cmd_init()
 
 
@@ -218,8 +218,9 @@ class ANSEndpoint(AKFBaseEndpoint):
 
     def handle_msg(self, msg):
         msg_f = ANS_Reply(msg)
-        # 2 == in progress, 4 == compelte ? !
-        print(f"Tag: {msg_f.TAG} return status {msg_f.STATUS:#x}, type: {msg_f.TYPE:#x}")
+        # 2 == in progress, 4 == complete
+        if self.akf.verbose >= 3:
+            print(f"Tag: {msg_f.TAG} return status {msg_f.STATUS:#x}, type: {msg_f.TYPE:#x}")
         if (msg_f.TYPE == 4):
             self.in_progress = False
         if (msg_f.TYPE not in (2, 4)):

@@ -59,7 +59,7 @@ class AKF:
         else:
             self.akf = AKF_V2_Regs(u, u.adt[adt_path].get_reg(0)[0])
 
-        self.verbose = 3
+        self.verbose = 1
         self.configured = False
         self.epmap = {}
 
