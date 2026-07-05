@@ -19,13 +19,8 @@ ASP_CMD_NUM_LBA    = 0x8
 ASP_CMD_OUT_BUFFER = 0x30
 ASP_CMD_MAX_BUFS   = 512 # ?
 
-# MAIN read 0x80110
-# NVRAM read 0x80236
-# NVRAM write 0x80246
-# LLB read 0x80331
-# SYSCFG read 0x80637
-
-# 7 IS PANICLOG and may not be always readable
+# From oob read syslog
+# 0, MAIN, NVRAM, FW, LLB, EFFACE, SYSCFG, PANICLOG 
 
 # bit [11:8] seem to be the NSID here
 #read_ops = (0, 0x80110, 0x80236, 0x80331, 0x80430 , 0x80535, 0x80637, 0)
