@@ -43,7 +43,7 @@ class ANS_Message(Register64):
     EP = 63, 56, Constant(0x20)
 
 class ANS_SetBase(ANS_Message):
-    BASE = 51, 20
+    BASE = 55, 16
     UNK = 15, 4, Constant(0x118)
     IO = 1
     CMD = 0
