@@ -9,8 +9,9 @@ from m1n1 import asm
 from .akf import StandardAKF
 from .akf.base import *
 
-CMD_BUFFER_PER_NSID = 2240
+CMD_BUFFER_PER_TAG = 2240
 NUM_NSID = 8
+NUM_TAGS = 8
 
 ASP_CMD_OP         = 0x0
 ASP_CMD_LBA_OFF    = 0x4
@@ -77,9 +78,6 @@ class ANS_Cmd(ANS_Message):
 class ANS_IO_Cmd(ANS_Cmd):
     IO = 1
 
-class ANS_Admin_Cmd(ANS_Cmd):
-    IO = 1
-
 class ANS_Reply(ANS_Message):
     EP = 63, 56, Constant(0x20)
     STATUS = 15, 12
@@ -97,13 +95,10 @@ class ANSEndpoint(AKFBaseEndpoint):
         self.in_progress = False
         self.verbose = 1
 
-    def ns_setup(self, ns):
-        # UNK may be multiplier of ARG2 and ARG3
-        arg3 = (ns * 3)
-        # "Carry over" from arg3 to arg2, like in manual addition
-        arg2 = ((ns * 2) & 0xf) + (arg3 >> 4) 
-        arg3 &= 0xf
-        self.send(ANS_Admin_Cmd(ARG_2=arg2, ARG_3=arg3, TAG=ns, UNK=0x23, IO=0, CMD=1))
+    # this has to do with setting up the command buffer
+    def tag_setup(self, tag):
+        # ANS_Admin_Cmd(ARG_2=arg2, ARG_3=arg3, TAG=tag, UNK=0x23, IO=0, CMD=1)
+        self.send(ANS_Message((0x23000001 | tag << 4 | 0x20 << 56) + (0x23000 * tag)))
         self.akf.work()
         self.mon.poll()
 
@@ -117,8 +112,8 @@ class ANSEndpoint(AKFBaseEndpoint):
         return self.base
     
     def cmdbuf_for_tag(self, tag=0):
-        buf = self.base + CMD_BUFFER_PER_NSID * tag
-        self.akf.u.proxy.memset32(buf, 0, CMD_BUFFER_PER_NSID)
+        buf = self.base + CMD_BUFFER_PER_TAG * tag
+        self.akf.u.proxy.memset32(buf, 0, CMD_BUFFER_PER_TAG)
         return buf
 
     def asp_read(self, nsid, lba, bfr):
@@ -218,17 +213,15 @@ class ANSEndpoint(AKFBaseEndpoint):
 
     def start_io(self):
         # this is used by the IOP so we use proxy function here
-        self.base = self.akf.u.proxy.memalign(0x1000, CMD_BUFFER_PER_NSID * NUM_NSID)
-        self.akf.u.proxy.memset32(self.base, 0, CMD_BUFFER_PER_NSID * NUM_NSID)   
+        self.base = self.akf.u.proxy.memalign(0x1000, CMD_BUFFER_PER_TAG * NUM_TAGS)
+        self.akf.u.proxy.memset32(self.base, 0, CMD_BUFFER_PER_TAG * NUM_TAGS)   
         self.in_progress = True
         self.send(ANS_SetBase(BASE=self.base, UNK=0x118, IO=0, CMD=0))
         while self.in_progress:
             self.akf.work()
             self.mon.poll()
-        for i in range(0, 8):
-            self.ns_setup(i)
-        for i in range(0, 8):
-            self.akf.u.proxy.write32(self.base + CMD_BUFFER_PER_NSID * i, i << 8)
+        for i in range(0, NUM_TAGS):
+            self.tag_setup(i)
         self.mon.poll()
         if (self.verbose >= 1):
             self.identify()
