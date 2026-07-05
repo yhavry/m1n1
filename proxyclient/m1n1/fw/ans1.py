@@ -18,6 +18,14 @@ ASP_CMD_NUM_LBA    = 0x8
 ASP_CMD_OUT_BUFFER = 0x30
 ASP_CMD_MAX_BUFS   = 512 # ?
 
+# MAIN read 0x80110
+# NVRAM read 0x80236
+# NVRAM write 0x80246
+# LLB read 0x80331
+# SYSCFG read 0x80637
+
+read_ops = (0, 0x80110, 0x80236, 0x80331, 0 , 0, 0x80637, 0)
+
 code = u.malloc(0x1000)
 
 util = asm.ARMAsm("""
@@ -36,6 +44,7 @@ p.ic_ivau(code, len(util.data))
 # NSID
 # 0 = non namespace specific
 # 1 = main storage
+# 2 = LLB
 # 3 = nvram
 # 6 = syscfg
 
@@ -112,6 +121,12 @@ class ANSEndpoint(AKFBaseEndpoint):
             print("Invalid NSID!")
             return
         
+        # this seems to be what determines which NSID gets read
+        # message's nsid might just be the offset into command buffer (?)
+        if not read_ops[nsid]:
+            print(f"NSID {nsid} has unknown read OP")
+            return
+        
         if ((bfr & 0xffffff00000000fff) != 0):
             print("Buffer not 0x1000 aligned")
             return
@@ -119,8 +134,7 @@ class ANSEndpoint(AKFBaseEndpoint):
         self.mon.poll()
 
         cmd = self.cmdbuf_for_ns(nsid)
-        # 3 in bit 7, 4 = read   
-        self.akf.u.proxy.write32(cmd + ASP_CMD_OP, 0x80031 | nsid << 8)
+        self.akf.u.proxy.write32(cmd + ASP_CMD_OP, read_ops[nsid])
         self.akf.u.proxy.write32(cmd + ASP_CMD_LBA_OFF, lba)
         self.akf.u.proxy.write32(cmd + ASP_CMD_NUM_LBA, 1) # num buffers in out_buffer
         self.akf.u.proxy.write32(cmd + ASP_CMD_OUT_BUFFER, bfr >> 12)
