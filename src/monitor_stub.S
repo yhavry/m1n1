@@ -11,6 +11,7 @@
 //    u64 kern_phys_base;
 //    u64 kern_phys_slide;
 //    u64 kern_virt_slide;
+//    u64 kern_header_off;
 // };
 
 .type _start, @function
