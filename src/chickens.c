@@ -66,6 +66,15 @@ const struct midr_part_features features_a11 = {
     .fast_ipi = true,
 };
 
+const struct midr_part_features features_a13 = {
+    .disable_dc_mva = true,
+    .acc_cfg = true,
+    .apple_sysregs_unlocked = true,
+    .sleep_mode = SLEEP_GLOBAL,
+    .nex_powergating = true,
+    .fast_ipi = true,
+};
+
 const struct midr_part_features features_m1 = {
     .disable_dc_mva = true,
     .acc_cfg = true,
@@ -121,6 +130,16 @@ const struct midr_part_features features_m4 = {
  * Different behavior between the cores should be implemented with is_ecore()
  * instead.
  */
+static void init_t8030_lightning(int rev)
+{
+    (void)rev;
+}
+
+static void init_t8030_thunder(int rev)
+{
+    (void)rev;
+}
+
 const struct midr_part_info midr_parts[] = {
     {MIDR_PART_S5L8960X_CYCLONE, "A7 Cyclone", init_s5l8960x_cyclone, &features_a7},
     {MIDR_PART_T7000_TYPHOON, "A8 Typhoon", init_t7000_typhoon, &features_a7},
@@ -133,6 +152,8 @@ const struct midr_part_info midr_parts[] = {
      &features_a10},
     {MIDR_PART_T8015_MONSOON, "A11 Monsoon", init_t8015_monsoon, &features_a11},
     {MIDR_PART_T8015_MISTRAL, "A11 Mistral", init_t8015_mistral, &features_a11},
+    {MIDR_PART_T8030_LIGHTNING, "A13 Lightning", init_t8030_lightning, &features_a13},
+    {MIDR_PART_T8030_THUNDER, "A13 Thunder", init_t8030_thunder, &features_a13},
     {MIDR_PART_T8103_FIRESTORM, "M1 Firestorm", init_t8103_firestorm, &features_m1},
     {MIDR_PART_T6000_FIRESTORM, "M1 Pro Firestorm", init_t6000_firestorm, &features_m1},
     {MIDR_PART_T6001_FIRESTORM, "M1 Max Firestorm", init_t6001_firestorm, &features_m1},
