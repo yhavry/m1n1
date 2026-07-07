@@ -15,6 +15,7 @@
 #define T8011    0x8011
 #define T8012    0x8012
 #define T8015    0x8015
+#define T8030    0x8030
 
 #define T8103 0x8103
 #define T8112 0x8112
