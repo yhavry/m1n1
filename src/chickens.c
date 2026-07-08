@@ -119,7 +119,6 @@ const struct midr_part_features features_a13 = {
     .optional_deep_wfi_retention = true,
     .disable_dc_mva = true,
     .acc_cfg = true,
-    
     .cyc_ovrd = true,
     /* Nick's A13 feature list does not include apple_sysregs_unlocked.
      * Leave disabled for now because .cyc_ovrd already programs
@@ -127,13 +126,14 @@ const struct midr_part_features features_a13 = {
      * the same CYC_OVRD mode sequence run twice during CPU init.
      */
     /* .apple_sysregs_unlocked = true, */
-.sleep_mode = SLEEP_GLOBAL,
+    .sleep_mode = SLEEP_GLOBAL,
     .uncore_version = UNCORE_V2,
     .nex_powergating = true,
     .fast_ipi = true,
     .mmu_sprr = false,
     .amx = true,
 };
+
 
 const struct midr_part_features features_m1 = {
     .optional_deep_wfi_retention = true,
