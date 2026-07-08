@@ -119,7 +119,8 @@ const struct midr_part_features features_a13 = {
     .optional_deep_wfi_retention = true,
     .disable_dc_mva = true,
     .acc_cfg = true,
-    .apple_sysregs_unlocked = true,
+    
+    .cyc_ovrd = true,.apple_sysregs_unlocked = true,
     .sleep_mode = SLEEP_GLOBAL,
     .uncore_version = UNCORE_V2,
     .nex_powergating = true,
@@ -300,6 +301,14 @@ void init_cpu(void)
         /* Disable deep sleep */
         reg_clr(SYS_IMP_APL_ACC_CFG, ACC_CFG_DEEP_SLEEP);
     }
+    if (cpu_features->cyc_ovrd) {
+        /* Unmask external IRQs, set WFI mode to up (2) */
+        reg_mask(SYS_IMP_APL_CYC_OVRD,
+                 CYC_OVRD_FIQ_MODE_MASK | CYC_OVRD_IRQ_MODE_MASK | CYC_OVRD_WFI_MODE_MASK,
+                 CYC_OVRD_FIQ_MODE(0) | CYC_OVRD_IRQ_MODE(0) | CYC_OVRD_WFI_MODE(2));
+    }
+
+
 
     if (cpu_features->optional_deep_wfi_retention)
         // Enable WFI Retention

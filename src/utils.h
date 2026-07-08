@@ -494,6 +494,7 @@ struct midr_part_features {
     bool optional_deep_wfi_retention;
     bool disable_dc_mva;
     bool acc_cfg;
+    bool cyc_ovrd;
     bool apple_sysregs_unlocked;
     bool workaround_cyclone_cache;
     bool nex_powergating;
