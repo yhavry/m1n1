@@ -66,11 +66,15 @@ static void init_t8030_thunder(int rev)
 
     init_t8030_common_thunder();
     reg_set(SYS_IMP_APL_HID5, HID5_DISABLE_FILL_2C_MERGE);
-    /* D421/A13 Thunder hangs immediately on this write during m1n1 CPU init.
-     * Keep disabled for now; EHID10/HID5 Thunder chickens survive.
+    /*
+     * D421/A13 hangs during early m1n1 CPU init when this Thunder HID4
+     * chicken bit is programmed under the current iBoot handoff path.
+     * Leave it disabled until the required firmware/boot state difference
+     * is understood.
      */
     /* reg_set(SYS_IMP_APL_HID4, HID4_FORCE_NS_ORD_LD_REQ_NO_OLDER_LD); */
     reg_set(SYS_IMP_APL_EHID10, EHID10_RCC_DISABLE_POWER_SAVE_PREFETCHER_CLOCK_OFF);
+
 }
 
 
@@ -134,7 +138,12 @@ const struct midr_part_features features_a13 = {
     .nex_powergating = true,
     .fast_ipi = true,
     .mmu_sprr = false,
-    .amx = true,
+    /*
+     * D421/A13 freezes on SYS_IMP_APL_AMX_CTX_EL1 during m1n1 CPU init
+     * under the current iBoot handoff path. Leave AMX disabled until this
+     * sysreg path is understood.
+     */
+    /* .amx = true, */
 };
 
 
@@ -298,7 +307,6 @@ void init_cpu(void)
         msr(SYS_IMP_APL_SIQ_CFG_EL1, 2);
         sysop("isb");
     }
-
     if (cpu_features->amx) {
         // XXX is this really AMX?
         int core = mrs(MPIDR_EL1) & 0xff;
@@ -316,7 +324,6 @@ void init_cpu(void)
                  CYC_OVRD_FIQ_MODE_MASK | CYC_OVRD_IRQ_MODE_MASK | CYC_OVRD_WFI_MODE_MASK,
                  CYC_OVRD_FIQ_MODE(0) | CYC_OVRD_IRQ_MODE(0) | CYC_OVRD_WFI_MODE(2));
     }
-
 
 
     if (cpu_features->optional_deep_wfi_retention)
