@@ -66,7 +66,10 @@ static void init_t8030_thunder(int rev)
 
     init_t8030_common_thunder();
     reg_set(SYS_IMP_APL_HID5, HID5_DISABLE_FILL_2C_MERGE);
-    reg_set(SYS_IMP_APL_HID4, HID4_FORCE_NS_ORD_LD_REQ_NO_OLDER_LD);
+    /* D421/A13 Thunder hangs immediately on this write during m1n1 CPU init.
+     * Keep disabled for now; EHID10/HID5 Thunder chickens survive.
+     */
+    /* reg_set(SYS_IMP_APL_HID4, HID4_FORCE_NS_ORD_LD_REQ_NO_OLDER_LD); */
     reg_set(SYS_IMP_APL_EHID10, EHID10_RCC_DISABLE_POWER_SAVE_PREFETCHER_CLOCK_OFF);
 }
 
