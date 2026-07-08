@@ -310,6 +310,10 @@
 #define HID8_DATA_SET_ID3_VALUE_MASK GENMASK(63, 60)
 
 #define SYS_IMP_APL_HID9                sys_reg(3, 0, 15, 9, 0)
+#define HID9_FIX_BUG_47221499                BIT(54)
+#define HID9_DISABLE_NT_WIDGET_FOR_UNALIGNED BIT(52)
+#define HID9_FIX_BUG_57817908                BIT(50)
+#define HID9_FIX_BUG_51667717                BIT(49)
 #define HID9_AVL_UNK17                  BIT(17)
 #define HID9_TSO_ALLOW_DC_ZVA_WC        BIT(26)
 #define HID9_TSO_SERIALIZE_VLD_MICROOPS BIT(29)
@@ -370,6 +374,9 @@
 #define HID14_ENABLE_NEX_POWER_GATING BIT(32)
 
 #define SYS_IMP_APL_HID16         sys_reg(3, 0, 15, 15, 2)
+#define HID16_DISABLE_X_PICK_RS45              BIT(60)
+#define HID16_ENABLE_RS4_SEC                   BIT(57)
+#define HID16_ENABLE_AGGRESSIVE_LEQ_THROTTLING BIT(18)
 #define HID16_AVL_UNK12           BIT(12)
 #define HID16_SPAREBIT0           BIT(56)
 #define HID16_SPAREBIT3           BIT(59)

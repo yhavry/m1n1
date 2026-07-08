@@ -35,15 +35,41 @@ void init_t6030_everest(int rev);
 void init_t6031_sawtooth(int rev);
 void init_t6031_everest(int rev);
 
-void init_t8030_lightning(int rev)
+static void init_t8030_lightning(int rev)
 {
-    UNUSED(rev);
+    (void)rev;
+    reg_set(SYS_IMP_APL_HID5, HID5_DISABLE_FILL_2C_MERGE);
+    reg_set(SYS_IMP_APL_HID0, HID0_CACHE_FUSION_DISABLE);
+    reg_mask(SYS_IMP_APL_HID4, HID4_CNF_CNTR_THRESH_MASK, HID4_CNF_CNTR_THRESH(3));
+    reg_set(SYS_IMP_APL_HID9, HID9_FIX_BUG_47221499);
+    reg_set(SYS_IMP_APL_HID9, HID9_DISABLE_NT_WIDGET_FOR_UNALIGNED);
+    reg_set(SYS_IMP_APL_HID16, HID16_ENABLE_RS4_SEC);
+    reg_clr(SYS_IMP_APL_HID16, HID16_DISABLE_X_PICK_RS45);
+    reg_set(SYS_IMP_APL_HID16, HID16_ENABLE_MPX_PICK_45);
+    reg_set(SYS_IMP_APL_HID16, HID16_ENABLE_MP_CYCLONE_7);
+    reg_set(SYS_IMP_APL_HID4, HID4_FORCE_NS_ORD_LD_REQ_NO_OLDER_LD);
+    reg_set(SYS_IMP_APL_HID4, HID4_DISABLE_STNT_WIDGET);
+    reg_set(SYS_IMP_APL_HID11, HID11_DISABLE_X64_NT_LAUNCH_OPTION);
+    reg_set(SYS_IMP_APL_HID16, HID16_ENABLE_AGGRESSIVE_LEQ_THROTTLING);
+    reg_mask(SYS_IMP_APL_HID13, HID13_PRE_CYCLES_MASK, HID13_PRE_CYCLES(4));
 }
 
-void init_t8030_thunder(int rev)
+
+static void init_t8030_common_thunder(void)
 {
-    UNUSED(rev);
+    reg_set(SYS_IMP_APL_EHID10, HID10_FORCE_WAIT_STATE_DRAIN_UC);
 }
+
+static void init_t8030_thunder(int rev)
+{
+    (void)rev;
+
+    init_t8030_common_thunder();
+    reg_set(SYS_IMP_APL_HID5, HID5_DISABLE_FILL_2C_MERGE);
+    reg_set(SYS_IMP_APL_HID4, HID4_FORCE_NS_ORD_LD_REQ_NO_OLDER_LD);
+    reg_set(SYS_IMP_APL_EHID10, EHID10_RCC_DISABLE_POWER_SAVE_PREFETCHER_CLOCK_OFF);
+}
+
 
 struct midr_part_info {
     int part;
@@ -87,6 +113,19 @@ const struct midr_part_features features_a12 = {
     .uncore_version = UNCORE_V2,
     .nex_powergating = true,
     .fast_ipi = true,
+};
+
+const struct midr_part_features features_a13 = {
+    .optional_deep_wfi_retention = true,
+    .disable_dc_mva = true,
+    .acc_cfg = true,
+    .apple_sysregs_unlocked = true,
+    .sleep_mode = SLEEP_GLOBAL,
+    .uncore_version = UNCORE_V2,
+    .nex_powergating = true,
+    .fast_ipi = true,
+    .mmu_sprr = false,
+    .amx = true,
 };
 
 const struct midr_part_features features_m1 = {
@@ -159,8 +198,8 @@ const struct midr_part_info midr_parts[] = {
     {MIDR_PART_T8015_MISTRAL, "A11 Mistral", init_t8015_mistral, &features_a11},
     {MIDR_PART_T8020_VORTEX, "A12 Vortex", init_t8020_vortex, &features_a12},
     {MIDR_PART_T8020_TEMPSET, "A12 Tempset", init_t8020_tempset, &features_a12},
-    {MIDR_PART_T8030_LIGHTNING, "A13 Lightning", init_t8030_lightning, &features_a12},
-    {MIDR_PART_T8030_THUNDER, "A13 Thunder", init_t8030_thunder, &features_a12},
+    {MIDR_PART_T8030_LIGHTNING, "A13 Lightning", init_t8030_lightning, &features_a13},
+    {MIDR_PART_T8030_THUNDER, "A13 Thunder", init_t8030_thunder, &features_a13},
     {MIDR_PART_T8103_FIRESTORM, "M1 Firestorm", init_t8103_firestorm, &features_m1},
     {MIDR_PART_T6000_FIRESTORM, "M1 Pro Firestorm", init_t6000_firestorm, &features_m1},
     {MIDR_PART_T6001_FIRESTORM, "M1 Max Firestorm", init_t6001_firestorm, &features_m1},
