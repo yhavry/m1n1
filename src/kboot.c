@@ -195,6 +195,23 @@ static int dt_set_fb(void)
         return 0;
     }
 
+    int fb_chosen = fdt_path_offset(dt, "/chosen");
+    if (fb_chosen < 0)
+        bail("FDT: /chosen not found\n");
+
+    /*
+     * /chosen/framebuffer has a 64-bit reg property, so describe /chosen as
+     * a simple bus before Linux parses it.
+     */
+    if (fdt_setprop_u32(dt, fb_chosen, "#address-cells", 2))
+        bail("FDT: couldn't set chosen #address-cells\n");
+
+    if (fdt_setprop_u32(dt, fb_chosen, "#size-cells", 2))
+        bail("FDT: couldn't set chosen #size-cells\n");
+
+    if (fdt_setprop(dt, fb_chosen, "ranges", NULL, 0))
+        bail("FDT: couldn't set chosen ranges\n");
+
     u64 fb_base, fb_height;
     get_notchless_fb(&fb_base, &fb_height);
     u64 fb_size = cur_boot_args.video.stride * fb_height;
