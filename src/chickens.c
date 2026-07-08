@@ -35,6 +35,16 @@ void init_t6030_everest(int rev);
 void init_t6031_sawtooth(int rev);
 void init_t6031_everest(int rev);
 
+void init_t8030_lightning(int rev)
+{
+    UNUSED(rev);
+}
+
+void init_t8030_thunder(int rev)
+{
+    UNUSED(rev);
+}
+
 struct midr_part_info {
     int part;
     const char *name;
@@ -149,6 +159,8 @@ const struct midr_part_info midr_parts[] = {
     {MIDR_PART_T8015_MISTRAL, "A11 Mistral", init_t8015_mistral, &features_a11},
     {MIDR_PART_T8020_VORTEX, "A12 Vortex", init_t8020_vortex, &features_a12},
     {MIDR_PART_T8020_TEMPSET, "A12 Tempset", init_t8020_tempset, &features_a12},
+    {MIDR_PART_T8030_LIGHTNING, "A13 Lightning", init_t8030_lightning, &features_a12},
+    {MIDR_PART_T8030_THUNDER, "A13 Thunder", init_t8030_thunder, &features_a12},
     {MIDR_PART_T8103_FIRESTORM, "M1 Firestorm", init_t8103_firestorm, &features_m1},
     {MIDR_PART_T6000_FIRESTORM, "M1 Pro Firestorm", init_t6000_firestorm, &features_m1},
     {MIDR_PART_T6001_FIRESTORM, "M1 Max Firestorm", init_t6001_firestorm, &features_m1},
