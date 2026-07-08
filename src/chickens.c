@@ -121,8 +121,13 @@ const struct midr_part_features features_a13 = {
     .acc_cfg = true,
     
     .cyc_ovrd = true,
-    .apple_sysregs_unlocked = true,
-    .sleep_mode = SLEEP_GLOBAL,
+    /* Nick's A13 feature list does not include apple_sysregs_unlocked.
+     * Leave disabled for now because .cyc_ovrd already programs
+     * SYS_IMP_APL_CYC_OVRD FIQ/IRQ/WFI mode, and enabling both makes
+     * the same CYC_OVRD mode sequence run twice during CPU init.
+     */
+    /* .apple_sysregs_unlocked = true, */
+.sleep_mode = SLEEP_GLOBAL,
     .uncore_version = UNCORE_V2,
     .nex_powergating = true,
     .fast_ipi = true,
