@@ -120,7 +120,8 @@ const struct midr_part_features features_a13 = {
     .disable_dc_mva = true,
     .acc_cfg = true,
     
-    .cyc_ovrd = true,.apple_sysregs_unlocked = true,
+    .cyc_ovrd = true,
+    .apple_sysregs_unlocked = true,
     .sleep_mode = SLEEP_GLOBAL,
     .uncore_version = UNCORE_V2,
     .nex_powergating = true,
