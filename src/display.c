@@ -18,6 +18,22 @@
 #define DISPLAY_STATUS_DELAY         100
 #define DISPLAY_STATUS_RETRIES(dptx) ((dptx) ? 100 : 20)
 
+#define DSIM_CMD_STATE_OFFSET   0x004
+#define DSIM_CMD_HEADER_OFFSET  0x06c
+#define DSIM_CMD_PAYLOAD_OFFSET 0x070
+#define DSIM_CMD_STATUS_OFFSET  0x074
+
+#define DSIM_MMIO_HIGH_BASE 0x200000000ULL
+
+#define MIPI_DSI_DCS_LONG_WRITE          0x29
+#define MIPI_DCS_SET_DISPLAY_BRIGHTNESS  0x51
+#define MIPI_DCS_BRIGHTNESS_LEN          3
+#define MIPI_DCS_BRIGHTNESS_MAX          0x7ff
+#define MIPI_DCS_BRIGHTNESS_HEADER       \
+    (MIPI_DSI_DCS_LONG_WRITE | (MIPI_DCS_BRIGHTNESS_LEN << 8))
+
+static u64 display_dsim_base;
+
 #define COMPARE(a, b)                                                                              \
     if ((a) > (b)) {                                                                               \
         *best = modes[i];                                                                          \
@@ -663,6 +679,100 @@ int display_init(void)
                cur_boot_args.video.height);
         return 0;
     }
+}
+
+static u64 display_get_dsim_base(void)
+{
+    static const char *paths[] = {
+        "/arm-io/mipi-dsim",
+        "/arm-io/mipi-dsim0",
+        "/arm-io/mipi-dsim1",
+        "/arm-io/disp0/mipi-dsim",
+        "/arm-io/dispext0/mipi-dsim",
+        "/arm-io/dispext4/mipi-dsim",
+    };
+    u32 size;
+    const u64 *reg;
+
+    if (display_dsim_base)
+        return display_dsim_base;
+
+    for (size_t i = 0; i < ARRAY_SIZE(paths); ++i) {
+        int node = adt_path_offset(adt, paths[i]);
+
+        if (node < 0)
+            continue;
+
+        reg = adt_getprop(adt, node, "reg", &size);
+        if (!reg || size < 2 * sizeof(u64))
+            continue;
+
+        display_dsim_base = reg[0];
+
+        if (display_dsim_base < DSIM_MMIO_HIGH_BASE)
+            display_dsim_base += DSIM_MMIO_HIGH_BASE;
+
+        printf("display: MIPI DSIM brightness interface at 0x%lx\n", display_dsim_base);
+        return display_dsim_base;
+    }
+
+    return 0;
+}
+
+static volatile u32 *display_dsim_reg(u64 base, u32 offset)
+{
+    return (volatile u32 *)(base + offset);
+}
+
+int display_set_brightness(u32 brightness)
+{
+    u64 base;
+    u32 payload;
+    u32 status = 0;
+
+    if (brightness > MIPI_DCS_BRIGHTNESS_MAX) {
+        printf("display: invalid MIPI DCS brightness %u\n", brightness);
+        return -1;
+    }
+
+    base = display_get_dsim_base();
+    if (!base) {
+        printf("display: no MIPI DSIM brightness interface found\n");
+        return -1;
+    }
+
+    if (*display_dsim_reg(base, DSIM_CMD_STATE_OFFSET) != 1) {
+        printf("display: MIPI DSIM is not ready, state=0x%x\n",
+               *display_dsim_reg(base, DSIM_CMD_STATE_OFFSET));
+        return -1;
+    }
+
+    status = *display_dsim_reg(base, DSIM_CMD_STATUS_OFFSET);
+    if (!(status & 1)) {
+        printf("display: MIPI DSIM command interface busy, status=0x%x\n", status);
+        return -1;
+    }
+
+    payload = MIPI_DCS_SET_DISPLAY_BRIGHTNESS |
+              ((brightness & 0xff) << 8) |
+              (((brightness >> 8) & 0x07) << 16);
+
+    *display_dsim_reg(base, DSIM_CMD_PAYLOAD_OFFSET) = payload;
+    (void)*display_dsim_reg(base, DSIM_CMD_PAYLOAD_OFFSET);
+    asm volatile("dsb sy" : : : "memory");
+
+    *display_dsim_reg(base, DSIM_CMD_HEADER_OFFSET) = MIPI_DCS_BRIGHTNESS_HEADER;
+    (void)*display_dsim_reg(base, DSIM_CMD_HEADER_OFFSET);
+    asm volatile("dsb sy" : : : "memory");
+
+    for (int i = 0; i < 100000; ++i) {
+        status = *display_dsim_reg(base, DSIM_CMD_STATUS_OFFSET);
+        if (status & 1)
+            return 0;
+    }
+
+    printf("display: MIPI DCS brightness update timed out, status=0x%x\n", status);
+    return -1;
 }
 
 void display_shutdown(dcp_shutdown_mode mode)
