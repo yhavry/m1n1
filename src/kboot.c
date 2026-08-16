@@ -2972,6 +2972,7 @@ int kboot_boot(void *kernel)
 
     usb_init();
     pcie_init();
+    smc_shutdown_shared();
     dapf_init_all();
 
     if (chip_id == T8015 || chip_id == T8012) {
