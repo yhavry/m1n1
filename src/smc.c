@@ -44,6 +44,8 @@ struct smc_dev {
     u64 ret[SMC_NUM_IDS];
 };
 
+static smc_dev_t *smc_shared;
+
 static void smc_handle_msg(smc_dev_t *smc, u64 msg)
 {
     if (!smc->shmem)
@@ -214,6 +216,23 @@ out_asc:
 out_free:
     free(smc);
     return NULL;
+}
+
+smc_dev_t *smc_get_shared(void)
+{
+    if (!smc_shared)
+        smc_shared = smc_init();
+
+    return smc_shared;
+}
+
+void smc_shutdown_shared(void)
+{
+    if (!smc_shared)
+        return;
+
+    smc_shutdown(smc_shared);
+    smc_shared = NULL;
 }
 
 int smc_write_u32(smc_dev_t *smc, u32 key, u32 value)
