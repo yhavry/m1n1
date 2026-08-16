@@ -650,6 +650,7 @@ bool rtkit_boot(rtkit_dev_t *rtk)
     if (has_oslog && !rtkit_start_ep(rtk, RTKIT_EP_OSLOG))
         return false;
 
+    u64 power_timeout = timeout_calculate(USEC_PER_SEC);
     while (rtk->iop_power != RTKIT_POWER_ON) {
         struct rtkit_message rtk_msg;
         int ret = rtkit_recv(rtk, &rtk_msg);
@@ -658,6 +659,11 @@ bool rtkit_boot(rtkit_dev_t *rtk)
                          rtk_msg.ep, rtk_msg.msg);
         else if (ret < 0)
             return false;
+
+        if (timeout_expired(power_timeout)) {
+            rtkit_printf("timed out waiting for IOP power-on\n");
+            return false;
+        }
     }
 
     /* this enables syslog */
