@@ -3,6 +3,7 @@
 #include "adt.h"
 #include "pcie.h"
 #include "pmgr.h"
+#include "smc.h"
 #include "string.h"
 #include "tunables.h"
 #include "utils.h"
@@ -209,6 +210,47 @@ static const struct reg_info regs_t6031 = {
 
 static bool pcie_initialized = false;
 
+struct adt_function_smc_write_u32 {
+    u32 phandle;
+    u32 function;
+    u32 key;
+    u32 argument;
+};
+
+#define AMFM_FUNCTION_PKW4 0x704b5734u
+
+static int pcie_enable_amfm_reg_on(void)
+{
+    int node = adt_path_offset(adt, "/amfm");
+    if (node < 0)
+        return 0;
+
+    struct adt_function_smc_write_u32 reg_on;
+    if (adt_getprop_copy(adt, node, "function-reg_on", &reg_on, sizeof(reg_on)) < 0)
+        return 0;
+
+    if (reg_on.function != AMFM_FUNCTION_PKW4) {
+        printf("pcie: AMFM function-reg_on type 0x%x is not pKW4\n", reg_on.function);
+        return -1;
+    }
+
+    smc_dev_t *smc = smc_get_shared();
+    if (!smc) {
+        printf("pcie: Failed to initialize SMC for AMFM REG_ON\n");
+        return -1;
+    }
+
+    int ret = smc_write_u32(smc, reg_on.key, 1);
+    if (ret) {
+        printf("pcie: Failed to enable AMFM REG_ON: %d\n", ret);
+        return -1;
+    }
+
+    /* AppleMultiFunctionManager defaults to a 100 ms WLAN REG_ON settle delay. */
+    mdelay(100);
+    return 0;
+}
+
 enum PCIE_CONTROLLERS {
     APCIE,
     APCIE_GE0,
@@ -245,6 +287,7 @@ static int pcie_init_controller(int controller, const char *path)
     u32 lane_mode = DWC_DBI_PORT_LINK_MODE_1_LANE;
     u32 link_width = 1;
     const struct fuse_bits *fuse_bits;
+    bool combined_phy_ip_tunables = false;
 
     state->initialized = false;
     state->num_phys = 1;
@@ -259,6 +302,11 @@ static int pcie_init_controller(int controller, const char *path)
         fuse_bits = pcie_fuse_bits_t8103;
         state->pcie_regs = &regs_t8xxx_t600x;
         printf("pcie: Initializing t8103 PCIe controller\n");
+    } else if (adt_is_compatible(adt, adt_offset, "apcie,t8030")) {
+        fuse_bits = NULL;
+        combined_phy_ip_tunables = true;
+        state->pcie_regs = &regs_t8xxx_t600x;
+        printf("pcie: Initializing t8030 PCIe controller\n");
     } else if (adt_is_compatible(adt, adt_offset, "apcie,t6000")) {
         fuse_bits = pcie_fuse_bits_t6000;
         state->pcie_regs = &regs_t8xxx_t600x;
@@ -471,6 +519,14 @@ static int pcie_init_controller(int controller, const char *path)
                    fuse << fuse_bits[i].tgt_bit);
         }
 
+        if (combined_phy_ip_tunables) {
+            if (tunables_apply_local_addr(path, "apcie-phy-ip-tunables", state->phy_ip_base[phy])) {
+                printf("pcie: Error applying %s for %s\n", "apcie-phy-ip-tunables", path);
+                return -1;
+            }
+            continue;
+        }
+
         char pll_prop[64];
         char auspma_prop[64];
 
@@ -550,6 +606,7 @@ static int pcie_init_controller(int controller, const char *path)
             continue;
 
         printf("pcie: Initializing port %d\n", port);
+        u64 port_config_base = config_base + ((u64)port << 15);
 
         if (adt_get_reg(adt, adt_path, "reg",
                         port * port_reg_cnt + state->pcie_regs->shared_reg_count,
@@ -721,17 +778,19 @@ static int pcie_init_controller(int controller, const char *path)
         }
 
         /* Make Designware PCIe Core registers writable. */
-        set32(config_base + DWC_DBI_RO_WR, DWC_DBI_RO_WR_EN);
+        set32(port_config_base + DWC_DBI_RO_WR, DWC_DBI_RO_WR_EN);
 
-        if (tunables_apply_local_addr(bridge, "pcie-rc-tunables", config_base)) {
+        if (tunables_apply_local_addr(bridge, "pcie-rc-tunables", port_config_base)) {
             printf("pcie: Error applying %s for %s\n", "pcie-rc-tunables", bridge);
             return -1;
         }
-        if (tunables_apply_local_addr(bridge, "pcie-rc-gen3-shadow-tunables", config_base)) {
+        if (adt_getprop(adt, bridge_offset, "pcie-rc-gen3-shadow-tunables", NULL) &&
+            tunables_apply_local_addr(bridge, "pcie-rc-gen3-shadow-tunables", port_config_base)) {
             printf("pcie: Error applying %s for %s\n", "pcie-rc-gen3-shadow-tunables", bridge);
             return -1;
         }
-        if (tunables_apply_local_addr(bridge, "pcie-rc-gen4-shadow-tunables", config_base)) {
+        if (adt_getprop(adt, bridge_offset, "pcie-rc-gen4-shadow-tunables", NULL) &&
+            tunables_apply_local_addr(bridge, "pcie-rc-gen4-shadow-tunables", port_config_base)) {
             printf("pcie: Error applying %s for %s\n", "pcie-rc-gen4-shadow-tunables", bridge);
             return -1;
         }
@@ -765,28 +824,28 @@ static int pcie_init_controller(int controller, const char *path)
                 return -1;
             }
 
-            mask32(config_base + PCIE_CAP_BASE + PCIE_LNKCAP, PCIE_LNKCAP_SLS,
+            mask32(port_config_base + PCIE_CAP_BASE + PCIE_LNKCAP, PCIE_LNKCAP_SLS,
                    FIELD_PREP(PCIE_LNKCAP_SLS, max_speed));
 
-            mask32(config_base + PCIE_CAP_BASE + PCIE_LNKCAP2, PCIE_LNKCAP2_SLS,
+            mask32(port_config_base + PCIE_CAP_BASE + PCIE_LNKCAP2, PCIE_LNKCAP2_SLS,
                    FIELD_PREP(PCIE_LNKCAP2_SLS, (1 << max_speed) - 1));
 
-            mask16(config_base + PCIE_CAP_BASE + PCIE_LNKCTL2, PCIE_LNKCTL2_TLS,
+            mask16(port_config_base + PCIE_CAP_BASE + PCIE_LNKCTL2, PCIE_LNKCTL2_TLS,
                    FIELD_PREP(PCIE_LNKCTL2_TLS, max_speed));
 
-            set32(config_base + DWC_DBI_LINK_WIDTH_SPEED_CONTROL, DWC_DBI_SPEED_CHANGE);
+            set32(port_config_base + DWC_DBI_LINK_WIDTH_SPEED_CONTROL, DWC_DBI_SPEED_CHANGE);
         }
 
         /* Max link width */
-        mask32(config_base + DWC_DBI_PORT_LINK_CONTROL, DWC_DBI_PORT_LINK_MODE,
+        mask32(port_config_base + DWC_DBI_PORT_LINK_CONTROL, DWC_DBI_PORT_LINK_MODE,
                FIELD_PREP(DWC_DBI_PORT_LINK_MODE, lane_mode));
-        mask32(config_base + DWC_DBI_LINK_WIDTH_SPEED_CONTROL, DWC_DBI_LINK_WIDTH,
+        mask32(port_config_base + DWC_DBI_LINK_WIDTH_SPEED_CONTROL, DWC_DBI_LINK_WIDTH,
                FIELD_PREP(DWC_DBI_LINK_WIDTH, link_width));
-        mask32(config_base + PCIE_CAP_BASE + PCIE_LNKCAP, PCIE_LNKCAP_MLW,
+        mask32(port_config_base + PCIE_CAP_BASE + PCIE_LNKCAP, PCIE_LNKCAP_MLW,
                FIELD_PREP(PCIE_LNKCAP_MLW, link_width));
 
         /* Make Designware PCIe Core registers readonly. */
-        clear32(config_base + DWC_DBI_RO_WR, DWC_DBI_RO_WR_EN);
+        clear32(port_config_base + DWC_DBI_RO_WR, DWC_DBI_RO_WR_EN);
 
         if (state->pcie_regs->type == APCIE_T602X || state->pcie_regs->type == APCIE_T6031) {
             write32(state->port_base[port] + 0x4020, 0x3);
@@ -799,9 +858,6 @@ static int pcie_init_controller(int controller, const char *path)
         }
 
         read32(state->port_base[port] + APCIE_PORT_LINKSTS);
-
-        /* Move to the next PCIe device on this bus. */
-        config_base += (1 << 15);
     }
 
     printf("pcie: Initialized controller %d\n", controller);
@@ -816,6 +872,9 @@ int pcie_init(void)
 
     if (pcie_initialized)
         return 0;
+
+    if (pcie_enable_amfm_reg_on())
+        printf("pcie: AMFM REG_ON failed; continuing without WLAN power\n");
 
     success |= pcie_init_controller(APCIE, "/arm-io/apcie") == 0;
     success |= pcie_init_controller(APCIE, "/arm-io/apcie0") == 0;
