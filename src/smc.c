@@ -62,11 +62,12 @@ static void smc_handle_msg(smc_dev_t *smc, u64 msg)
 
 static int smc_work(smc_dev_t *smc)
 {
-    int ret;
     struct rtkit_message msg;
 
-    while ((ret = rtkit_recv(smc->rtkit, &msg)) == 0)
-        ;
+    int ret = rtkit_recv(smc->rtkit, &msg);
+
+    if (ret == 0)
+        return 1;
 
     if (ret < 0) {
         printf("SMC: rtkit_recv failed!\n");
@@ -83,14 +84,14 @@ static int smc_work(smc_dev_t *smc)
     return 0;
 }
 
-static void smc_send(smc_dev_t *smc, u64 message)
+static bool smc_send(smc_dev_t *smc, u64 message)
 {
     struct rtkit_message msg;
 
     msg.ep = smc->ep;
     msg.msg = message;
 
-    rtkit_send(smc->rtkit, &msg);
+    return rtkit_send(smc->rtkit, &msg);
 }
 
 static int smc_cmd(smc_dev_t *smc, u64 message)
@@ -101,9 +102,24 @@ static int smc_cmd(smc_dev_t *smc, u64 message)
 
     message |= FIELD_PREP(SMC_MSG_ID, id);
 
-    smc_send(smc, message);
-    while (smc->outstanding[id])
-        smc_work(smc);
+    if (!smc_send(smc, message)) {
+        smc->outstanding[id] = false;
+        printf("SMC: failed to send command 0x%x\n", id);
+        return -1;
+    }
+
+    u64 timeout = timeout_calculate(USEC_PER_SEC);
+    while (smc->outstanding[id]) {
+        if (smc_work(smc) < 0) {
+            smc->outstanding[id] = false;
+            return -1;
+        }
+        if (timeout_expired(timeout)) {
+            smc->outstanding[id] = false;
+            printf("SMC: command 0x%x timed out\n", id);
+            return -1;
+        }
+    }
 
     u64 result = smc->ret[id];
     u32 ret = FIELD_GET(SMC_RESULT_RESULT, result);
@@ -173,12 +189,20 @@ smc_dev_t *smc_init(void)
     u64 initialize =
         FIELD_PREP(SMC_MSG_TYPE, SMC_INITIALIZE) | FIELD_PREP(SMC_MSG_ID, smc->msgid++);
 
-    smc_send(smc, initialize);
+    if (!smc_send(smc, initialize)) {
+        printf("SMC: failed to send initialize message\n");
+        goto out_rtkit;
+    }
 
+    u64 timeout = timeout_calculate(USEC_PER_SEC);
     while (!smc->shmem) {
         int ret = smc_work(smc);
         if (ret < 0)
             goto out_rtkit;
+        if (timeout_expired(timeout)) {
+            printf("SMC: timed out waiting for shared memory\n");
+            goto out_rtkit;
+        }
     }
 
     return smc;
